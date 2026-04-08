@@ -1,0 +1,160 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required)
+//   - email: string (required)
+//   - displayName: string (optional)
+//   - photoURL: string (optional)
+//   - role: string (enum: ['chef', 'admin'])
+//
+// Collection: recipes
+// Document ID: {recipeId}
+// Fields:
+//   - title: string (required)
+//   - theme: string (optional)
+//   - ingredients: list (required)
+//   - instructions: string (required)
+//   - cost: number (optional)
+//   - recommendedPrice: number (optional)
+//   - createdAt: timestamp (required)
+//   - authorId: string (required)
+//
+// Collection: orders
+// Document ID: {orderId}
+// Fields:
+//   - imageUrl: string (optional)
+//   - analysis: string (optional)
+//   - items: list (optional)
+//   - createdAt: timestamp (required)
+//   - authorId: string (required)
+//
+// Collection: chats
+// Document ID: {chatId}
+// Fields:
+//   - text: string (required)
+//   - sender: string (enum: ['user', 'ai'])
+//   - timestamp: timestamp (required)
+//   - userId: string (required)
+//   - hasFiles: boolean (optional)
+//   - fileNames: list (optional)
+//   - suggestions: list (optional)
+//   - recipe: map (optional)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "tlamhuynh@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'preferences']) &&
+             data.uid is string &&
+             data.email is string && isValidEmail(data.email) &&
+             (data.role == 'chef' || data.role == 'admin') &&
+             (!('preferences' in data) || data.preferences is map);
+    }
+
+    function isValidIngredient(ing) {
+      return ing is map &&
+             ing.keys().hasAll(['name', 'amount', 'unit', 'price']) &&
+             ing.name is string && ing.name.size() > 0 &&
+             ing.amount is string &&
+             ing.unit is string &&
+             ing.price is number;
+    }
+
+    function isValidRecipe(data) {
+      return hasOnlyAllowedFields(['title', 'theme', 'ingredients', 'instructions', 'cost', 'recommendedPrice', 'createdAt', 'authorId']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.ingredients is list &&
+             data.ingredients.all(ing, isValidIngredient(ing)) &&
+             data.instructions is string &&
+             data.authorId is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return hasOnlyAllowedFields(['imageUrl', 'analysis', 'items', 'createdAt', 'authorId']) &&
+             data.authorId is string &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidChatMessage(data) {
+      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'hasFiles', 'fileNames', 'suggestions', 'recipe']) &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
+             data.sender in ['user', 'ai'] &&
+             data.userId is string &&
+             data.timestamp is timestamp &&
+             (!('hasFiles' in data) || data.hasFiles is bool) &&
+             (!('fileNames' in data) || data.fileNames is list) &&
+             (!('suggestions' in data) || data.suggestions is list) &&
+             (!('recipe' in data) || data.recipe is map);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) && request.resource.data.role == 'chef' || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) && request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isOwner(resource.data.authorId) || isAdmin();
+      allow create: if isAuthenticated() && isValidRecipe(request.resource.data) && isOwner(request.resource.data.authorId);
+      allow update: if isAuthenticated() && isValidRecipe(request.resource.data) && isOwner(resource.data.authorId) && request.resource.data.authorId == resource.data.authorId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.authorId) || isAdmin();
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data) && isOwner(request.resource.data.authorId);
+      allow update: if isAuthenticated() && isValidOrder(request.resource.data) && isOwner(resource.data.authorId) && request.resource.data.authorId == resource.data.authorId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    match /chats/{chatId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidChatMessage(request.resource.data) && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isValidChatMessage(request.resource.data) && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId) || isAdmin();
+    }
+  }
+}

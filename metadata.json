@@ -1,0 +1,7 @@
+{
+  "name": "Remix: SousChef AI",
+  "description": "A professional AI assistant for chefs featuring recipe generation, sub-agents for costing and pricing, order analysis, and a professional chef chat.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["chef", "admin"] },
+        "preferences": {
+          "type": "object",
+          "properties": {
+            "chatUserBubbleColor": { "type": "string" },
+            "chatAiBubbleColor": { "type": "string" },
+            "chatBackground": { "type": "string" }
+          }
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "Recipe": {
+      "title": "Recipe",
+      "description": "Recipe details with costing and pricing",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "theme": { "type": "string" },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "amount": { "type": "string" },
+              "unit": { "type": "string" },
+              "price": { "type": "number" }
+            },
+            "required": ["name", "amount", "unit", "price"]
+          }
+        },
+        "instructions": { "type": "string" },
+        "cost": { "type": "number" },
+        "recommendedPrice": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "authorId": { "type": "string" }
+      },
+      "required": ["title", "authorId"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Order analysis from photos",
+      "type": "object",
+      "properties": {
+        "imageUrl": { "type": "string" },
+        "analysis": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "authorId": { "type": "string" }
+      },
+      "required": ["authorId"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Messages in the chef chat",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "sender": { "type": "string", "enum": ["user", "ai"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["text", "sender", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/recipes/{recipeId}": {
+      "schema": "Recipe",
+      "description": "Chef recipes"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Order analysis"
+    },
+    "/chats/{chatId}": {
+      "schema": "ChatMessage",
+      "description": "Chef chat history"
+    }
+  }
+}
