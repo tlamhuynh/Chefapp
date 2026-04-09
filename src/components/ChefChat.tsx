@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, updateDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
-import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool } from '../lib/gemini';
+import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool, systemInstruction } from '../lib/gemini';
 import { chatWithAI, AVAILABLE_MODELS, AIModel } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search } from 'lucide-react';
@@ -89,6 +89,8 @@ interface ChatMessageData {
   };
   hasFiles?: boolean;
   fileNames?: string[];
+  functionCalls?: any[];
+  functionResponses?: any[];
 }
 
 export function ChefChat() {
@@ -100,7 +102,7 @@ export function ChefChat() {
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-3-flash-preview'
+    selectedModelId: 'gemini-1.5-flash'
   });
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
@@ -266,10 +268,31 @@ export function ChefChat() {
     try {
       await addDoc(collection(db, 'chats'), userMessage);
       
-      let history: ChatMessage[] = messages.map(m => ({
-        role: m.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: m.text }]
-      }));
+      // Use flatMap to exclude potentially empty or invalid messages from history
+      let history: ChatMessage[] = messages.flatMap(m => {
+        const parts: any[] = [];
+        if (m.text) parts.push({ text: m.text });
+
+        if (m.sender === 'ai') {
+          if (m.recipe && !m.text?.includes(m.recipe.title)) {
+            parts.push({ text: `\n\n[Công thức: ${m.recipe.title}]` });
+          }
+          if (m.functionCalls) {
+            m.functionCalls.forEach(call => parts.push({ functionCall: call }));
+          }
+        } else if (m.sender === 'user') {
+          if (m.functionResponses) {
+            m.functionResponses.forEach(res => parts.push({ functionResponse: res }));
+          }
+        }
+
+        if (parts.length === 0) return [];
+
+        return [{
+          role: m.sender === 'user' ? 'user' : 'model',
+          parts
+        }];
+      });
 
       const currentParts: any[] = [{ text: textToSend }];
       currentFiles.forEach(f => {
@@ -286,10 +309,33 @@ export function ChefChat() {
       if (currentModel?.provider === 'google') {
         aiResult = await chatWithChef(history, tools);
         
-        // Handle tool calls
-        if (aiResult.functionCalls) {
+        // Handle tool calls loop (allowing for multiple turns of tool calling)
+        let toolCallAttempts = 0;
+        while (aiResult.functionCalls && toolCallAttempts < 5) {
+          toolCallAttempts++;
+          const functionResponsesParts = [];
+          const functionResponsesData = [];
+
+          // AI's turn with function calls
+          const aiTurn: ChatMessage = {
+            role: 'model',
+            parts: aiResult.functionCalls.map((call: any) => ({
+              functionCall: { name: call.name, args: call.args }
+            }))
+          };
+          history.push(aiTurn);
+
+          // Save AI's function calls to Firestore for persistence
+          await addDoc(collection(db, 'chats'), {
+            text: "",
+            functionCalls: aiResult.functionCalls,
+            sender: 'ai',
+            userId: auth.currentUser.uid,
+            timestamp: serverTimestamp()
+          });
+
           for (const call of aiResult.functionCalls) {
-            let toolResult = "";
+            let toolResult: any = "";
             if (call.name === 'search_google_drive') {
               toolResult = await searchDrive(call.args.query);
             } else if (call.name === 'search_google_photos') {
@@ -298,20 +344,35 @@ export function ChefChat() {
               toolResult = await searchKeep(call.args.query);
             }
 
-            history.push({ 
-              role: 'model', 
-              parts: [{ text: `Đang sử dụng RecipeCraw để tìm kiếm: ${call.args.query}` }] 
-            });
-            history.push({ 
-              role: 'user', 
-              parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
-            });
-            aiResult = await chatWithChef(history, tools);
+            const responsePart = {
+              functionResponse: {
+                name: call.name,
+                response: { result: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }
+              }
+            };
+            functionResponsesParts.push(responsePart);
+            functionResponsesData.push(responsePart.functionResponse);
           }
+
+          // User's turn (system providing tool results)
+          history.push({
+            role: 'user',
+            parts: functionResponsesParts
+          });
+
+          // Save function responses to Firestore
+          await addDoc(collection(db, 'chats'), {
+            text: "RecipeCraw đã hoàn tất tìm kiếm.",
+            functionResponses: functionResponsesData,
+            sender: 'user',
+            userId: auth.currentUser.uid,
+            timestamp: serverTimestamp()
+          });
+
+          aiResult = await chatWithChef(history, tools);
         }
       } else {
         // Use unified chat for other providers
-        const { systemInstruction } = await import('../lib/gemini');
         aiResult = await chatWithAI(preferences.selectedModelId, history, systemInstruction);
       }
 
@@ -320,9 +381,10 @@ export function ChefChat() {
       }
 
       await addDoc(collection(db, 'chats'), {
-        text: aiResult.text,
+        text: aiResult.text || "",
         suggestions: aiResult.suggestions || [],
         recipe: aiResult.recipe || null,
+        functionCalls: aiResult.functionCalls || null,
         sender: 'ai',
         userId: auth.currentUser.uid,
         timestamp: serverTimestamp()

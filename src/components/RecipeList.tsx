@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth } from '../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChefHat, Search, Calendar, DollarSign, ChevronRight } from 'lucide-react';
+import { ChefHat, Search, Calendar, DollarSign, ChevronRight, BookOpen } from 'lucide-react';
 import { RecipeDetail } from './RecipeDetail';
 
 export function RecipeList() {
@@ -113,4 +113,3 @@ export function RecipeList() {
   );
 }
 
-import { BookOpen } from 'lucide-react';

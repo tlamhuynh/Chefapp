@@ -1,8 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const ai = new GoogleGenAI({ apiKey: (import.meta as any).env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "" });
 
-export const chefModel = "gemini-3-flash-preview";
+export const chefModel = "gemini-1.5-flash";
 
 export const systemInstruction = `
 Bạn là một bếp trưởng điều hành chuyên nghiệp với 20 năm kinh nghiệm trong các nhà hàng gắn sao Michelin.
@@ -152,6 +152,14 @@ export interface ChatPart {
     data: string;
     mimeType: string;
   };
+  functionCall?: {
+    name: string;
+    args: any;
+  };
+  functionResponse?: {
+    name: string;
+    response: any;
+  };
 }
 
 export interface ChatMessage {
@@ -166,6 +174,8 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[]) {
       role: m.role,
       parts: m.parts.map(p => {
         if (p.inlineData) return { inlineData: p.inlineData };
+        if (p.functionCall) return { functionCall: p.functionCall };
+        if (p.functionResponse) return { functionResponse: p.functionResponse };
         return { text: p.text || "" };
       })
     })),

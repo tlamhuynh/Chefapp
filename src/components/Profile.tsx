@@ -1,6 +1,7 @@
 import { signOut, auth, User } from '../lib/firebase';
 import { motion } from 'framer-motion';
-import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, Key } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface ProfileProps {
   user: User;
@@ -8,6 +9,12 @@ interface ProfileProps {
 
 export function Profile({ user }: ProfileProps) {
   const handleLogout = () => signOut(auth);
+
+  const apiKeys = [
+    { name: 'Gemini', status: !!process.env.GEMINI_API_KEY },
+    { name: 'OpenAI', status: !!process.env.OPENAI_API_KEY },
+    { name: 'Anthropic', status: !!process.env.ANTHROPIC_API_KEY },
+  ];
 
   const menuItems = [
     { icon: Settings, label: 'Cài đặt bếp', color: 'text-stone-600' },
@@ -42,6 +49,26 @@ export function Profile({ user }: ProfileProps) {
         </div>
       </header>
 
+      <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm p-6 space-y-4">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 flex items-center gap-2">
+          <Key className="w-3 h-3" />
+          Trạng thái AI
+        </h3>
+        <div className="flex gap-2">
+          {apiKeys.map(key => (
+            <div
+              key={key.name}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border",
+                key.status ? "bg-green-50 border-green-100 text-green-600" : "bg-red-50 border-red-100 text-red-600"
+              )}
+            >
+              {key.name}: {key.status ? 'OK' : 'Thiếu'}
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
         {menuItems.map((item, i) => (
           <button
@@ -74,4 +101,3 @@ export function Profile({ user }: ProfileProps) {
   );
 }
 
-import { cn } from '../lib/utils';
