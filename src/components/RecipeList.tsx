@@ -3,12 +3,13 @@ import { db, collection, query, where, orderBy, onSnapshot, auth } from '../lib/
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChefHat, Search, Calendar, DollarSign, ChevronRight } from 'lucide-react';
 import { RecipeDetail } from './RecipeDetail';
+import { Recipe } from '../lib/utils';
 
 export function RecipeList() {
-  const [recipes, setRecipes] = useState<any[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -18,7 +19,7 @@ export function RecipeList() {
       orderBy('createdAt', 'desc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setRecipes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecipes(snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as Recipe) })));
       setLoading(false);
     });
     return () => unsubscribe();
