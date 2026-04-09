@@ -1,0 +1,9 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.souschef.ai',
+  appName: 'SousChef AI',
+  webDir: 'dist'
+};
+
+export default config;
