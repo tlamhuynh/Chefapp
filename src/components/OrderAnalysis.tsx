@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { X, Camera, Upload, Sparkles, ListChecks, ChevronRight } from 'lucide-react';
 import { analyzeOrderImage } from '../lib/gemini';
 import { db, collection, addDoc, serverTimestamp, auth } from '../lib/firebase';
