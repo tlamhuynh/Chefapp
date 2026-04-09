@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -13,17 +13,23 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Nhanh, hiệu quả cho các tác vụ hàng ngày.' },
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Mạnh mẽ, thông minh vượt trội cho các bài toán phức tạp.' },
-  { id: 'gemma-4-it', name: 'Gemma 4', provider: 'google', description: 'Model mã nguồn mở mới nhất từ Google, tối ưu cho hội thoại.' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Model hàng đầu từ OpenAI, đa năng và chính xác.' },
-  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Model thông minh nhất từ Anthropic, viết lách và tư duy tốt.' },
+  { id: 'gemini-flash-latest', name: 'Gemini 3 Flash', provider: 'google', description: 'Mặc định & Miễn phí. Tốc độ cực nhanh, hỗ trợ RecipeCraw tốt nhất.' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi phí và chiến lược kinh doanh chuyên sâu.' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', description: 'Siêu tiết kiệm. Phản hồi cực nhanh, thông minh vượt trội trong tầm giá.' },
+  { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'anthropic', description: 'Nhanh & Mượt. Văn phong tiếng Việt tự nhiên, phù hợp viết nội dung menu.' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Cao cấp. Model đa năng nhất của OpenAI cho mọi tác vụ.' },
+  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Đỉnh cao tư duy. Khả năng lập luận và giải quyết vấn đề phức tạp nhất.' },
 ];
 
 // Clients (Lazy initialization)
 let googleAI: GoogleGenAI | null = null;
 let openaiClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
+
+export interface AIConfig {
+  openaiKey?: string;
+  anthropicKey?: string;
+}
 
 function getGoogleAI() {
   if (!googleAI) {
@@ -34,29 +40,26 @@ function getGoogleAI() {
   return googleAI;
 }
 
-function getOpenAI() {
-  if (!openaiClient) {
-    const key = (import.meta as any).env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (!key) throw new Error("OPENAI_API_KEY is missing. Vui lòng cấu hình trong Settings.");
-    openaiClient = new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
-  }
-  return openaiClient;
+function getOpenAI(customKey?: string) {
+  const key = customKey || process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY is missing. Vui lòng cấu hình trong Settings.");
+  
+  return new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
 }
 
-function getAnthropic() {
-  if (!anthropicClient) {
-    const key = (import.meta as any).env.VITE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new Error("ANTHROPIC_API_KEY is missing. Vui lòng cấu hình trong Settings.");
-    anthropicClient = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
-  }
-  return anthropicClient;
+function getAnthropic(customKey?: string) {
+  const key = customKey || process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY is missing. Vui lòng cấu hình trong Settings.");
+  
+  return new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
 }
 
 export async function chatWithAI(
   modelId: string,
   messages: any[],
   systemInstruction: string,
-  tools?: any[]
+  tools?: any[],
+  config?: AIConfig
 ) {
   const model = AVAILABLE_MODELS.find(m => m.id === modelId) || AVAILABLE_MODELS[0];
 
@@ -65,27 +68,36 @@ export async function chatWithAI(
     const response = await ai.models.generateContent({
       model: model.id,
       contents: messages.map(m => ({
-        role: m.role,
+        role: m.role === 'model' ? 'model' : 'user',
         parts: m.parts.map((p: any) => {
-          if (p.inlineData) return { inlineData: p.inlineData };
+          if (p.inlineData) {
+            return {
+              inlineData: {
+                data: p.inlineData.data,
+                mimeType: p.inlineData.mimeType
+              }
+            };
+          }
           return { text: p.text || "" };
         })
       })),
       config: {
-        systemInstruction,
+        systemInstruction: systemInstruction,
         responseMimeType: "application/json",
       }
     });
 
+    const text = response.text || "";
+    
     try {
-      return JSON.parse(response.text);
+      return JSON.parse(text);
     } catch (e) {
-      return { text: response.text, suggestions: [] };
+      return { text: text, suggestions: [] };
     }
   }
 
   if (model.provider === 'openai') {
-    const openai = getOpenAI();
+    const openai = getOpenAI(config?.openaiKey);
     const response = await openai.chat.completions.create({
       model: model.id,
       messages: [
@@ -103,7 +115,7 @@ export async function chatWithAI(
   }
 
   if (model.provider === 'anthropic') {
-    const anthropic = getAnthropic();
+    const anthropic = getAnthropic(config?.anthropicKey);
     const response = await anthropic.messages.create({
       model: model.id,
       system: systemInstruction + "\n\nQUAN TRỌNG: Bạn PHẢI trả về kết quả dưới dạng JSON hợp lệ theo cấu trúc đã yêu cầu.",

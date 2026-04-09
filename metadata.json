@@ -1,6 +1,6 @@
 {
   "name": "Remix: SousChef AI",
-  "description": "A professional AI assistant for chefs featuring recipe generation, sub-agents for costing and pricing, order analysis, and a professional chef chat.",
+  "description": "A professional multi-model AI assistant for chefs featuring recipe generation (Gemini, GPT-4o, Claude), sub-agents for costing, and automated recipe crawling.",
   "requestFramePermissions": [
     "camera"
   ]

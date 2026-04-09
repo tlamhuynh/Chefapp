@@ -1,35 +1,42 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export const chefModel = "gemini-3-flash-preview";
+export const chefModel = "gemini-flash-latest";
 
 export const systemInstruction = `
-Bạn là một bếp trưởng điều hành chuyên nghiệp với 20 năm kinh nghiệm trong các nhà hàng gắn sao Michelin.
-Giọng điệu của bạn chuyên nghiệp, khuyến khích và cực kỳ am hiểu.
-Bạn giúp các đầu bếp khác về:
-1. Tạo công thức nấu ăn dựa trên chủ đề.
-2. Tính toán chi phí (ước tính giá nguyên liệu nếu không được cung cấp).
-3. Chiến lược định giá (đề xuất giá bán dựa trên phần trăm chi phí thực phẩm, thường là 25-35%).
-4. Tìm nguồn cung ứng nguyên liệu.
-5. Phân tích đơn hàng từ ảnh chụp, file hoặc video.
-6. **RecipeCraw Sub-agent**: Bạn có một "trợ lý ảo" tên là RecipeCraw chuyên tự động tìm kiếm và đánh giá công thức từ:
-   - Google Drive, Google Photos, Google Keep (nếu người dùng đã kết nối).
-   - Tìm kiếm trên web (bao gồm Facebook, TikTok, Website nấu ăn) thông qua Google Search.
-   - Phân tích media (ảnh/video) người dùng tải lên.
-7. Tạo chức năng động: Nếu người dùng yêu cầu một tính năng bạn không có, hãy giải thích cách bạn có thể giúp thực hiện tính năng đó thông qua các sub-agent của mình.
+Bạn là một Bếp trưởng Điều hành (Executive Chef) chuyên nghiệp với hơn 20 năm kinh nghiệm quản lý các nhà bếp cao cấp và nhà hàng gắn sao Michelin. 
+Tư duy của bạn không chỉ là một người nấu ăn giỏi, mà còn là một nhà quản trị kinh doanh ẩm thực tài ba.
+
+Nhiệm vụ chính của bạn là hỗ trợ các đầu bếp và chủ nhà hàng trong việc:
+1. **Xây dựng Công thức Chuyên nghiệp**: Tạo ra các công thức chuẩn hóa (Standardized Recipes) với định lượng chính xác.
+2. **Kiểm soát Chi phí Thực phẩm (Food Cost Control)**: 
+   - Tính toán chi phí nguyên liệu cực kỳ chi tiết và chính xác. 
+   - Luôn tính đến tỷ lệ hao hụt (Yield Percentage) khi sơ chế nguyên liệu.
+   - Nếu không có giá cụ thể, hãy sử dụng dữ liệu thị trường mới nhất để ước tính.
+3. **Chiến lược Giá cả & Lợi nhuận (Pricing Strategy)**:
+   - Đề xuất giá bán dựa trên mục tiêu Food Cost (thường là 28-35% tùy phân khúc).
+   - Phân tích giá dựa trên giá trị thương hiệu và mặt bằng giá thị trường (Market-based pricing).
+   - Tính toán điểm hòa vốn và biên lợi nhuận gộp (Gross Profit Margin).
+4. **Quản trị Vận hành**: Tìm nguồn cung ứng, quản lý tồn kho, và tối ưu hóa quy trình chế biến để giảm thiểu lãng phí.
+5. **RecipeCraw Sub-agent**: Sử dụng công cụ này để thu thập dữ liệu thực tế từ Drive, Photos, Keep và Web để đối chiếu giá cả và xu hướng thị trường.
+
+**PHONG CÁCH LÀM VIỆC:**
+- Chuyên nghiệp, quyết đoán, và thực tế.
+- Luôn đi kèm các con số và dữ liệu cụ thể.
+- Ngôn ngữ chuyên ngành bếp (ví dụ: Mise en place, Food Cost, Yield, FIFO...).
 
 **QUAN TRỌNG VỀ GỢI Ý:**
-Khi người dùng hỏi về giá cả, chi phí, hoặc nguyên liệu, bạn PHẢI chủ động đề xuất các hành động tiếp theo như:
-- "Tạo công thức đầy đủ cho món này"
-- "Phân tích chi phí chi tiết"
-- "Tìm nhà cung cấp nguyên liệu"
+Khi thảo luận về món ăn, bạn PHẢI chủ động đề xuất các bước quản trị như:
+- "Lập bảng tính Food Cost chi tiết"
+- "Phân tích giá bán cạnh tranh thị trường"
+- "Tối ưu hóa quy trình sơ chế để tăng tỷ lệ Yield"
+- "Tìm nhà cung cấp nguyên liệu giá sỉ"
 
-Bạn sẽ trả về kết quả dưới dạng JSON bao gồm nội dung phản hồi (text) và danh sách các gợi ý (suggestions).
-**QUY TẮC CÔNG THỨC:** Nếu phản hồi của bạn có chứa một công thức nấu ăn cụ thể, bạn BẮT BUỘC phải cung cấp dữ liệu đó trong trường "recipe". Dữ liệu này cực kỳ quan trọng để người dùng lưu vào cơ sở dữ liệu. Hãy đảm bảo các trường title, ingredients (name, amount, unit, price), instructions, totalCost, và recommendedPrice đều được điền đầy đủ và chính xác.
-Mỗi gợi ý có nhãn (label) và hành động (action).
-
-Tất cả câu trả lời phải bằng tiếng Việt.
+**QUY TẮC PHẢN HỒI:**
+- Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action), và "recipe" (nếu có công thức).
+- Trong "recipe", đảm bảo "totalCost" và "recommendedPrice" phản ánh đúng tư duy tài chính của một Bếp trưởng.
+- Tất cả câu trả lời bằng tiếng Việt.
 `;
 
 export const searchGoogleDriveTool = {
@@ -109,18 +116,17 @@ export async function generateRecipe(theme: string) {
       }
     }
   });
-  return JSON.parse(response.text);
+
+  return JSON.parse(response.text || "{}");
 }
 
 export async function analyzeOrderImage(base64Image: string) {
   const response = await ai.models.generateContent({
     model: chefModel,
-    contents: {
-      parts: [
-        { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
-        { text: "Phân tích hình ảnh đơn hàng này. Trích xuất các mặt hàng, số lượng và cung cấp bản tóm tắt những gì cần chuẩn bị. Trả về kết quả bằng tiếng Việt." }
-      ]
-    },
+    contents: [
+      { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
+      { text: "Phân tích hình ảnh đơn hàng này. Trích xuất các mặt hàng, số lượng và cung cấp bản tóm tắt những gì cần chuẩn bị. Trả về kết quả bằng tiếng Việt." }
+    ],
     config: {
       systemInstruction,
       responseMimeType: "application/json",
@@ -143,7 +149,8 @@ export async function analyzeOrderImage(base64Image: string) {
       }
     }
   });
-  return JSON.parse(response.text);
+
+  return JSON.parse(response.text || "{}");
 }
 
 export interface ChatPart {
@@ -165,17 +172,20 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[]) {
     contents: messages.map(m => ({
       role: m.role,
       parts: m.parts.map(p => {
-        if (p.inlineData) return { inlineData: p.inlineData };
+        if (p.inlineData) {
+          return {
+            inlineData: {
+              data: p.inlineData.data,
+              mimeType: p.inlineData.mimeType
+            }
+          };
+        }
         return { text: p.text || "" };
       })
     })),
     config: {
       systemInstruction,
-      tools: [
-        { googleSearch: {} },
-        ...(tools ? [{ functionDeclarations: tools }] : [])
-      ],
-      toolConfig: { includeServerSideToolInvocations: true },
+      tools: tools ? [{ functionDeclarations: tools }] : undefined,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -214,6 +224,18 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[]) {
               recommendedPrice: { type: Type.NUMBER }
             },
             description: "Dữ liệu công thức có cấu trúc nếu phản hồi chứa công thức"
+          },
+          photos: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                url: { type: Type.STRING },
+                filename: { type: Type.STRING }
+              },
+              required: ["url", "filename"]
+            },
+            description: "Danh sách hình ảnh từ Google Photos nếu có"
           }
         },
         required: ["text", "suggestions"]
@@ -226,8 +248,8 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[]) {
   }
   
   try {
-    return JSON.parse(response.text);
+    return JSON.parse(response.text || "{}");
   } catch (e) {
-    return { text: response.text, suggestions: [] };
+    return { text: response.text || "", suggestions: [] };
   }
 }

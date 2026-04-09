@@ -1,0 +1,8 @@
+<svg width="2732" height="2732" viewBox="0 0 2732 2732" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="2732" height="2732" fill="#F97316"/>
+  <g transform="translate(854, 854) scale(1)">
+    <path d="M512 200C339.7 200 200 339.7 200 512C200 684.3 339.7 824 512 824C684.3 824 824 684.3 824 512C824 339.7 684.3 200 512 200ZM650 600H374V550H650V600ZM650 500H374V450H650V500ZM650 400H374V350H650V400Z" fill="white"/>
+  </g>
+  <text x="1366" y="1800" text-anchor="middle" fill="white" style="font-family: sans-serif; font-size: 120px; font-weight: bold;">ChefChat</text>
+  <text x="1366" y="1950" text-anchor="middle" fill="white" style="font-family: sans-serif; font-size: 48px; fill-opacity: 0.8;">AI-Powered Kitchen Management</text>
+</svg>

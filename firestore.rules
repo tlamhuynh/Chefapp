@@ -39,10 +39,13 @@
 //   - sender: string (enum: ['user', 'ai'])
 //   - timestamp: timestamp (required)
 //   - userId: string (required)
+//   - status: string (enum: ['pending', 'processing', 'completed', 'error'])
 //   - hasFiles: boolean (optional)
 //   - fileNames: list (optional)
+//   - files: list (optional)
 //   - suggestions: list (optional)
 //   - recipe: map (optional)
+//   - photos: list (optional)
 //
 // ===============================================================
 
@@ -115,15 +118,18 @@ service cloud.firestore {
     }
 
     function isValidChatMessage(data) {
-      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'hasFiles', 'fileNames', 'suggestions', 'recipe']) &&
+      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'status', 'hasFiles', 'fileNames', 'files', 'suggestions', 'recipe', 'photos']) &&
              data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
              data.sender in ['user', 'ai'] &&
              data.userId is string &&
              data.timestamp is timestamp &&
+             (!('status' in data) || data.status in ['pending', 'processing', 'completed', 'error']) &&
              (!('hasFiles' in data) || data.hasFiles is bool) &&
              (!('fileNames' in data) || data.fileNames is list) &&
+             (!('files' in data) || data.files is list) &&
              (!('suggestions' in data) || data.suggestions is list) &&
-             (!('recipe' in data) || data.recipe is map);
+             (!('recipe' in data) || data.recipe is map) &&
+             (!('photos' in data) || data.photos is list);
     }
 
     // ===============================================================

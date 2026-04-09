@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ChefChat - Mobile & Web
 
-# Run and deploy your AI Studio app
+Dự án này đã được tích hợp **Capacitor** để có thể đóng gói thành ứng dụng Android (APK).
 
-This contains everything you need to run your app locally.
+## 1. GitHub Actions (Tự động Build APK)
+Mỗi khi bạn `push` code lên nhánh `main` hoặc `master` trên GitHub, một quy trình tự động sẽ được kích hoạt:
+- **Tên Action:** `Build Android APK`
+- **Kết quả:** Sau khi build xong, bạn có thể tải file APK trong mục **Actions** -> chọn lần chạy gần nhất -> mục **Artifacts**.
 
-View your app in AI Studio: https://ai.studio/apps/999eee6a-399c-4a36-966b-16bd5ee06c73
+## 2. Cách Build thủ công (Local)
+Nếu bạn muốn build trên máy cá nhân:
+1. Cài đặt Android Studio.
+2. Chạy lệnh:
+   ```bash
+   npm install
+   npm run cap:build
+   npm run cap:open
+   ```
+3. Trong Android Studio, chọn **Build** -> **Build Bundle(s) / APK(s)** -> **Build APK(s)**.
 
-## Run Locally
+## 3. Cấu hình Capacitor
+File cấu hình nằm tại `capacitor.config.ts`. Bạn có thể thay đổi `appId` (ví dụ: `com.yourname.chefchat`) tại đây.
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+*Lưu ý: Để GitHub Action hoạt động, bạn cần đồng bộ dự án này với một Repository trên GitHub.*

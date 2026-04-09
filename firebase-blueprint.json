@@ -73,7 +73,14 @@
         "text": { "type": "string" },
         "sender": { "type": "string", "enum": ["user", "ai"] },
         "timestamp": { "type": "string", "format": "date-time" },
-        "userId": { "type": "string" }
+        "userId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "processing", "completed", "error"] },
+        "hasFiles": { "type": "boolean" },
+        "fileNames": { "type": "array", "items": { "type": "string" } },
+        "files": { "type": "array" },
+        "suggestions": { "type": "array" },
+        "recipe": { "type": "object" },
+        "photos": { "type": "array" }
       },
       "required": ["text", "sender", "userId"]
     }
