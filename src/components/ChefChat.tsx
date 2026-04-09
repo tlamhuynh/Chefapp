@@ -141,20 +141,47 @@ export function ChefChat() {
   useEffect(() => {
     if (!auth.currentUser) return;
 
+    const testConnection = async () => {
+      try {
+        const { getDocFromServer, doc } = await import('firebase/firestore');
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error: any) {
+        if (error.message?.includes('the client is offline')) {
+          console.error("Firebase connection failed: Client is offline or config is incorrect.");
+        }
+      }
+    };
+    testConnection();
+
     // Load user preferences
     const loadPrefs = async () => {
       try {
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser!.uid));
-        if (userDoc.exists() && userDoc.data().preferences) {
-          const savedPrefs = userDoc.data().preferences;
-          // Validate model ID to handle migration from old IDs
-          if (!AVAILABLE_MODELS.some(m => m.id === savedPrefs.selectedModelId)) {
-            savedPrefs.selectedModelId = 'gemini-flash-latest';
+        const userRef = doc(db, 'users', auth.currentUser!.uid);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          if (userDoc.data().preferences) {
+            const savedPrefs = userDoc.data().preferences;
+            // Validate model ID to handle migration from old IDs
+            if (!AVAILABLE_MODELS.some(m => m.id === savedPrefs.selectedModelId)) {
+              savedPrefs.selectedModelId = 'gemini-flash-latest';
+            }
+            setPreferences(prev => ({ ...prev, ...savedPrefs }));
           }
-          setPreferences(prev => ({ ...prev, ...savedPrefs }));
+        } else {
+          // Create initial user document
+          await setDoc(userRef, {
+            uid: auth.currentUser!.uid,
+            email: auth.currentUser!.email,
+            displayName: auth.currentUser!.displayName,
+            photoURL: auth.currentUser!.photoURL,
+            role: 'chef',
+            preferences: preferences,
+            createdAt: serverTimestamp()
+          });
         }
       } catch (error) {
-        console.error("Failed to load preferences", error);
+        console.error("Failed to load or create user preferences", error);
       }
     };
     loadPrefs();
@@ -168,17 +195,19 @@ export function ChefChat() {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ChatMessageData[];
       setMessages(msgs);
       
+      console.log("Messages updated:", msgs.length, "last status:", msgs[msgs.length - 1]?.status);
+
       // Check for pending messages to process
       const lastMsg = msgs[msgs.length - 1];
       
       // Pick up 'pending' OR 'processing' messages that might have been interrupted
-      // We check if it's 'processing' but we are not currently processing it in this tab
       const needsProcessing = msgs.find(m => 
         m.sender === 'user' && 
         (m.status === 'pending' || m.status === 'processing')
       );
 
       if (needsProcessing && !isProcessing) {
+        console.log("Processing message:", needsProcessing.id);
         processAiResponse(needsProcessing, msgs);
       }
     }, (error) => {
@@ -453,7 +482,7 @@ export function ChefChat() {
         const errorStr = String(aiError).toLowerCase();
         
         if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
-          errorMessage = "⚠️ **Hết hạn mức (Quota Limit):** Mô hình AI này hiện đã hết lượt sử dụng hoặc vượt quá giới hạn tốc độ. \n\n**Lời khuyên:** Bạn có thể chuyển sang **Gemini 1.5 Flash** (Mặc định & Miễn phí) để tiếp tục mà không bị gián đoạn.";
+          errorMessage = "⚠️ **Hết hạn mức (Quota Limit):** Mô hình AI này hiện đã hết lượt sử dụng hoặc vượt quá giới hạn tốc độ. \n\n**Lời khuyên:** Bạn có thể chuyển sang **Gemini Flash** (Mặc định & Miễn phí) để tiếp tục mà không bị gián đoạn.";
           
           const suggestions = [
             { label: "🔄 Thử lại", action: "retry" },
