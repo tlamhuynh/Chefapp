@@ -287,8 +287,8 @@ export function ChefChat() {
         aiResult = await chatWithChef(history, tools);
         
         // Handle tool calls
-        if (aiResult.functionCalls) {
-          for (const call of aiResult.functionCalls) {
+        if (aiResult.functionCalls && aiResult.functionCalls.length > 0) {
+          const toolPromises = aiResult.functionCalls.map(async (call) => {
             let toolResult = "";
             if (call.name === 'search_google_drive') {
               toolResult = await searchDrive(call.args.query);
@@ -297,7 +297,12 @@ export function ChefChat() {
             } else if (call.name === 'search_google_keep') {
               toolResult = await searchKeep(call.args.query);
             }
+            return { call, toolResult };
+          });
 
+          const results = await Promise.all(toolPromises);
+
+          for (const { call, toolResult } of results) {
             history.push({ 
               role: 'model', 
               parts: [{ text: `Đang sử dụng RecipeCraw để tìm kiếm: ${call.args.query}` }] 
@@ -306,8 +311,9 @@ export function ChefChat() {
               role: 'user', 
               parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
             });
-            aiResult = await chatWithChef(history, tools);
           }
+
+          aiResult = await chatWithChef(history, tools);
         }
       } else {
         // Use unified chat for other providers
