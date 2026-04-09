@@ -115,15 +115,17 @@ service cloud.firestore {
     }
 
     function isValidChatMessage(data) {
-      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'hasFiles', 'fileNames', 'suggestions', 'recipe']) &&
-             data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
+      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'hasFiles', 'fileNames', 'suggestions', 'recipe', 'functionCalls', 'functionResponses']) &&
+             data.text is string && data.text.size() < 10000 &&
              data.sender in ['user', 'ai'] &&
              data.userId is string &&
              data.timestamp is timestamp &&
              (!('hasFiles' in data) || data.hasFiles is bool) &&
              (!('fileNames' in data) || data.fileNames is list) &&
              (!('suggestions' in data) || data.suggestions is list) &&
-             (!('recipe' in data) || data.recipe is map);
+             (!('recipe' in data) || data.recipe is map) &&
+             (!('functionCalls' in data) || data.functionCalls is list) &&
+             (!('functionResponses' in data) || data.functionResponses is list);
     }
 
     // ===============================================================
