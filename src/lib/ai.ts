@@ -1,7 +1,3 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
-
 // Types
 export type AIProvider = 'google' | 'openai' | 'anthropic';
 
@@ -20,109 +16,33 @@ export const AVAILABLE_MODELS: AIModel[] = [
   { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Model thông minh nhất từ Anthropic, viết lách và tư duy tốt.' },
 ];
 
-// Clients (Lazy initialization)
-let googleAI: GoogleGenAI | null = null;
-let openaiClient: OpenAI | null = null;
-let anthropicClient: Anthropic | null = null;
-
-function getGoogleAI() {
-  if (!googleAI) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY is missing");
-    googleAI = new GoogleGenAI({ apiKey: key });
-  }
-  return googleAI;
-}
-
-function getOpenAI() {
-  if (!openaiClient) {
-    const key = (import.meta as any).env.VITE_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
-    if (!key) throw new Error("OPENAI_API_KEY is missing. Vui lòng cấu hình trong Settings.");
-    openaiClient = new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
-  }
-  return openaiClient;
-}
-
-function getAnthropic() {
-  if (!anthropicClient) {
-    const key = (import.meta as any).env.VITE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new Error("ANTHROPIC_API_KEY is missing. Vui lòng cấu hình trong Settings.");
-    anthropicClient = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
-  }
-  return anthropicClient;
-}
-
 export async function chatWithAI(
   modelId: string,
   messages: any[],
   systemInstruction: string,
   tools?: any[]
 ) {
-  const model = AVAILABLE_MODELS.find(m => m.id === modelId) || AVAILABLE_MODELS[0];
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      modelId,
+      messages,
+      systemInstruction,
+      tools
+    })
+  });
 
-  if (model.provider === 'google') {
-    const ai = getGoogleAI();
-    const response = await ai.models.generateContent({
-      model: model.id,
-      contents: messages.map(m => ({
-        role: m.role,
-        parts: m.parts.map((p: any) => {
-          if (p.inlineData) return { inlineData: p.inlineData };
-          return { text: p.text || "" };
-        })
-      })),
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-      }
-    });
-
+  if (!response.ok) {
+    let errorMsg = 'Failed to fetch from API';
     try {
-      return JSON.parse(response.text);
-    } catch (e) {
-      return { text: response.text, suggestions: [] };
-    }
+      const errData = await response.json();
+      if (errData.error) errorMsg = errData.error;
+    } catch(e) {}
+    throw new Error(errorMsg);
   }
 
-  if (model.provider === 'openai') {
-    const openai = getOpenAI();
-    const response = await openai.chat.completions.create({
-      model: model.id,
-      messages: [
-        { role: 'system', content: systemInstruction + "\n\nQUAN TRỌNG: Bạn PHẢI trả về kết quả dưới dạng JSON hợp lệ theo cấu trúc đã yêu cầu." } as any,
-        ...messages.map(m => ({
-          role: m.role === 'model' ? 'assistant' : 'user',
-          content: m.parts.map((p: any) => p.text).join('\n')
-        }))
-      ],
-      response_format: { type: "json_object" }
-    });
-
-    const content = response.choices[0].message.content || "{}";
-    return JSON.parse(content);
-  }
-
-  if (model.provider === 'anthropic') {
-    const anthropic = getAnthropic();
-    const response = await anthropic.messages.create({
-      model: model.id,
-      system: systemInstruction + "\n\nQUAN TRỌNG: Bạn PHẢI trả về kết quả dưới dạng JSON hợp lệ theo cấu trúc đã yêu cầu.",
-      max_tokens: 4096,
-      messages: messages.map(m => ({
-        role: m.role === 'model' ? 'assistant' : 'user',
-        content: m.parts.map((p: any) => p.text).join('\n')
-      })) as any
-    });
-
-    const content = (response.content[0] as any).text || "{}";
-    try {
-      // Anthropic doesn't have a strict JSON mode like OpenAI, so we might need to extract JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      return JSON.parse(jsonMatch ? jsonMatch[0] : content);
-    } catch (e) {
-      return { text: content, suggestions: [] };
-    }
-  }
-
-  throw new Error("Provider không hỗ trợ");
+  return response.json();
 }
