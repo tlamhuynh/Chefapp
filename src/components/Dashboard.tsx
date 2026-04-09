@@ -39,7 +39,14 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       orderBy('createdAt', 'desc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setRecipes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecipes(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          ingredientsStr: data.ingredients?.map((i: any) => i.name).join(', ') || ''
+        };
+      }));
     });
     return () => unsubscribe();
   }, []);
@@ -48,9 +55,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     const searchLower = searchFilter.toLowerCase();
     const titleMatch = r.title.toLowerCase().includes(searchLower);
     const themeMatch = r.theme?.toLowerCase().includes(searchLower);
-    const ingredientMatch = r.ingredients?.some((ing: any) => 
-      ing.name.toLowerCase().includes(searchLower)
-    );
+    const ingredientMatch = r.ingredientsStr?.toLowerCase().includes(searchLower);
     return titleMatch || themeMatch || ingredientMatch;
   });
 
@@ -174,7 +179,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                 <div className="flex-1 min-w-0">
                   <h4 className="font-bold text-stone-900 text-sm truncate">{recipe.title}</h4>
                   <p className="text-[10px] text-stone-400 truncate">
-                    {recipe.ingredients?.map((i: any) => i.name).join(', ')}
+                    {recipe.ingredientsStr}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-stone-300" />
