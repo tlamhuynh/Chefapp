@@ -126,6 +126,21 @@ export class LocalDb {
     const item = collection.find(d => d.id === docId);
     return this.reconstructTimestamps(item);
   }
+
+  static async exportAllData(): Promise<string> {
+    const collections = ['recipes', 'chats', 'preferences', 'conversations'];
+    const allData: Record<string, any[]> = {};
+    
+    for (const name of collections) {
+      allData[name] = await this.getCollection(name);
+    }
+    
+    return JSON.stringify({
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      data: allData
+    }, null, 2);
+  }
 }
 
 // Mock Auth

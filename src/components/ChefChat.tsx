@@ -10,10 +10,11 @@ import { DollarSign, Clock, ListChecks, Utensils } from 'lucide-react';
 
 interface RecipeData {
   title: string;
-  ingredients: { name: string; amount: string; unit: string; price: number }[];
+  ingredients: { name: string; amount: string; unit: string; purchasePrice: number; costPerAmount: number }[];
   instructions: string;
   totalCost: number;
   recommendedPrice: number;
+  image?: string;
 }
 
 function RecipeCard({ recipe, onSave, isSaving }: { recipe: RecipeData, onSave?: () => void, isSaving?: boolean }) {
@@ -29,14 +30,32 @@ function RecipeCard({ recipe, onSave, isSaving }: { recipe: RecipeData, onSave?:
         isSaving ? "border-orange-500 ring-1 ring-orange-500" : "border-stone-200 hover:border-orange-300 hover:shadow-md"
       )}
     >
+      {recipe.image && (
+        <div className="aspect-video w-full overflow-hidden relative">
+          <img 
+            src={recipe.image} 
+            alt={recipe.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+            <h3 className="text-white font-bold text-lg drop-shadow-md">
+              {recipe.title || "Công thức không tên"}
+            </h3>
+          </div>
+        </div>
+      )}
       <div className={cn(
         "p-4 text-white flex items-center justify-between transition-colors",
-        isSaving ? "bg-orange-600" : "bg-stone-900 group-hover:bg-stone-800"
+        recipe.image ? "bg-stone-900/90 backdrop-blur-sm" : (isSaving ? "bg-orange-600" : "bg-stone-900 group-hover:bg-stone-800")
       )}>
-        <h3 className="font-bold text-lg flex items-center gap-2">
-          <Utensils className="w-5 h-5 text-orange-400" />
-          {recipe.title || "Công thức không tên"}
-        </h3>
+        {!recipe.image && (
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Utensils className="w-5 h-5 text-orange-400" />
+            {recipe.title || "Công thức không tên"}
+          </h3>
+        )}
+        {recipe.image && <div className="flex items-center gap-2 text-xs font-medium text-stone-300"><Utensils className="w-4 h-4" /> Chi tiết công thức</div>}
         {isSaving ? (
           <Check className="w-5 h-5 animate-bounce" />
         ) : (
@@ -49,15 +68,29 @@ function RecipeCard({ recipe, onSave, isSaving }: { recipe: RecipeData, onSave?:
           <div>
             <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-1">
               <ListChecks className="w-3 h-3" />
-              Nguyên liệu
+              Nguyên liệu & Chi phí
             </h4>
-            <div className="grid grid-cols-1 gap-1">
-              {recipe.ingredients.map((ing, i) => (
-                <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-stone-50 last:border-0">
-                  <span className="text-stone-700 font-medium">{ing.name}</span>
-                  <span className="text-stone-500">{ing.amount} {ing.unit} • <span className="text-stone-400">${ing.price}</span></span>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-stone-100">
+                    <th className="py-2 font-bold text-stone-400">Tên</th>
+                    <th className="py-2 font-bold text-stone-400 text-right">Lượng</th>
+                    <th className="py-2 font-bold text-stone-400 text-right">Giá nhập</th>
+                    <th className="py-2 font-bold text-stone-400 text-right">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recipe.ingredients.map((ing, i) => (
+                    <tr key={i} className="border-b border-stone-50 last:border-0">
+                      <td className="py-2 text-stone-700 font-medium">{ing.name}</td>
+                      <td className="py-2 text-stone-500 text-right">{ing.amount} {ing.unit}</td>
+                      <td className="py-2 text-stone-400 text-right">${ing.purchasePrice?.toLocaleString()}</td>
+                      <td className="py-2 text-stone-900 font-bold text-right">${ing.costPerAmount?.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -97,13 +130,7 @@ interface ChatMessageData {
   conversationId?: string;
   timestamp: any;
   suggestions?: { label: string; action: string }[];
-  recipe?: {
-    title: string;
-    ingredients: { name: string; amount: string; unit: string; price: number }[];
-    instructions: string;
-    totalCost: number;
-    recommendedPrice: number;
-  };
+  recipe?: RecipeData;
   status?: 'pending' | 'processing' | 'completed' | 'error';
   hasFiles?: boolean;
   fileNames?: string[];
@@ -152,20 +179,10 @@ export function ChefChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isProcessingRef = useRef(false);
+
   useEffect(() => {
     if (!auth.currentUser) return;
-
-    const testConnection = async () => {
-      try {
-        const { getDocFromServer, doc } = await import('firebase/firestore');
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error: any) {
-        if (error.message?.includes('the client is offline')) {
-          console.error("Firebase connection failed: Client is offline or config is incorrect.");
-        }
-      }
-    };
-    testConnection();
 
     // Load user preferences
     const loadPrefs = async () => {
@@ -241,11 +258,10 @@ export function ChefChat() {
 
       // Check for pending messages to process
       const needsProcessing = msgs.find(m => 
-        m.sender === 'user' && 
-        (m.status === 'pending' || m.status === 'processing')
+        m.sender === 'user' && m.status === 'pending'
       );
 
-      if (needsProcessing && !isProcessing) {
+      if (needsProcessing && !isProcessingRef.current) {
         console.log("Processing message:", needsProcessing.id);
         processAiResponse(needsProcessing, msgs);
       }
@@ -450,13 +466,13 @@ export function ChefChat() {
   };
 
   const processAiResponse = async (userMsg: ChatMessageData, allMessages: ChatMessageData[]) => {
-    if (!auth.currentUser || isProcessing) return;
+    if (!auth.currentUser || isProcessingRef.current) return;
     
+    isProcessingRef.current = true;
     setIsProcessing(true);
 
     try {
-      // Mark as processing in Firestore to prevent other tabs/instances from picking it up
-      // If it's already 'processing', this update might still succeed, which is fine
+      // Mark as processing in Firestore
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'processing' });
       
       let history: ChatMessage[] = allMessages.filter(m => m.id !== userMsg.id).map(m => ({
@@ -607,6 +623,7 @@ export function ChefChat() {
     } catch (error) {
       console.error("Process AI Response failed:", error);
     } finally {
+      isProcessingRef.current = false;
       setIsProcessing(false);
     }
   };

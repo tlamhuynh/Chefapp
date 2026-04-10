@@ -4,11 +4,28 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", serif;
+  
+  --radius-3xl: 2rem;
+  --radius-4xl: 2.5rem;
 }
 
 @layer base {
   body {
-    @apply bg-stone-50 text-stone-900 font-sans antialiased;
+    @apply bg-stone-50 text-stone-900 font-sans antialiased selection:bg-orange-100 selection:text-orange-900;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm;
+  }
+  
+  .btn-primary {
+    @apply bg-stone-900 text-white font-semibold py-4 px-6 rounded-2xl transition-all active:scale-95 hover:bg-stone-800 disabled:opacity-50 shadow-lg shadow-stone-200;
+  }
+  
+  .input-base {
+    @apply w-full bg-white border border-stone-200 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all shadow-sm placeholder:text-stone-400;
   }
 }
 
@@ -16,4 +33,24 @@
 ::-webkit-scrollbar {
   width: 0px;
   background: transparent;
+}
+
+/* Smooth page transitions */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+.page-transition-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+.page-transition-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
 }

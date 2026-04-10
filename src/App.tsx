@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { RecipeList } from './components/RecipeList';
 import { ChefChat } from './components/ChefChat';
+import { CreativeAgent } from './components/CreativeAgent';
 import { Profile } from './components/Profile';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ChefHat } from 'lucide-react';
@@ -12,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'recipes' | 'chat' | 'profile'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'recipes' | 'chat' | 'profile' | 'creative'>('dashboard');
 
   useEffect(() => {
     testConnection();
@@ -102,6 +103,7 @@ export default function App() {
           <AnimatePresence mode="wait">
             {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
             {activeTab === 'recipes' && <RecipeList key="recipes" />}
+            {activeTab === 'creative' && <CreativeAgent key="creative" />}
             {activeTab === 'chat' && <ChefChat key="chat" />}
             {activeTab === 'profile' && <Profile key="profile" user={user} />}
           </AnimatePresence>

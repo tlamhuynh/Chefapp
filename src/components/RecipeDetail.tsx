@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Save, DollarSign, ListChecks, ChefHat, Sparkles, Edit2, Trash2, Plus, Minus, AlertCircle } from 'lucide-react';
+import { X, Save, DollarSign, ListChecks, ChefHat, Sparkles, Edit2, Trash2, Plus, Minus, AlertCircle, Share2, Copy, Check as CheckIcon } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { db, doc, updateDoc, deleteDoc, handleFirestoreError, OperationType } from '../lib/firebase';
 import { cn, validateRecipe } from '../lib/utils';
@@ -18,6 +18,26 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editedRecipe, setEditedRecipe] = useState({ ...recipe });
   const [isSaving, setIsSaving] = useState(false);
+  const [showShareTooltip, setShowShareTooltip] = useState(false);
+
+  const handleShare = async () => {
+    const shareText = `# ${recipe.title}\n\n## Nguyên liệu\n${recipe.ingredients.map((ing: any) => `- ${ing.name}: ${ing.amount} ${ing.unit}`).join('\n')}\n\n## Hướng dẫn\n${recipe.instructions}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: recipe.title,
+          text: shareText,
+        });
+      } catch (err) {
+        console.error("Share failed", err);
+      }
+    } else {
+      await navigator.clipboard.writeText(shareText);
+      setShowShareTooltip(true);
+      setTimeout(() => setShowShareTooltip(false), 2000);
+    }
+  };
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -54,7 +74,7 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
   const addIngredient = () => {
     setEditedRecipe({
       ...editedRecipe,
-      ingredients: [...editedRecipe.ingredients, { name: '', amount: '', unit: '', price: 0 }]
+      ingredients: [...editedRecipe.ingredients, { name: '', amount: '', unit: '', purchasePrice: 0, costPerAmount: 0 }]
     });
   };
 
@@ -66,7 +86,7 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
   const updateIngredient = (index: number, field: string, value: any) => {
     const newIngredients = editedRecipe.ingredients.map((ing: any, i: number) => {
       if (i === index) {
-        return { ...ing, [field]: field === 'price' ? parseFloat(value) || 0 : value };
+        return { ...ing, [field]: (field === 'purchasePrice' || field === 'costPerAmount') ? parseFloat(value) || 0 : value };
       }
       return ing;
     });
@@ -129,6 +149,31 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
             >
               <Sparkles className="w-5 h-5" />
             </button>
+          )}
+
+          {!isEditing && (
+            <div className="relative">
+              <button
+                onClick={handleShare}
+                className="p-2 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-100 transition-colors"
+                title="Chia sẻ"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+              <AnimatePresence>
+                {showShareTooltip && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute right-0 top-full mt-2 bg-stone-900 text-white text-[10px] py-1 px-2 rounded whitespace-nowrap z-50 flex items-center gap-1"
+                  >
+                    <CheckIcon className="w-3 h-3 text-green-400" />
+                    Đã sao chép!
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
           
           {isNew && onSave ? (
@@ -193,9 +238,16 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
                       />
                       <input
                         type="number"
-                        placeholder="Giá"
-                        value={ing.price}
-                        onChange={(e) => updateIngredient(i, 'price', e.target.value)}
+                        placeholder="Giá nhập"
+                        value={ing.purchasePrice}
+                        onChange={(e) => updateIngredient(i, 'purchasePrice', e.target.value)}
+                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Cost"
+                        value={ing.costPerAmount}
+                        onChange={(e) => updateIngredient(i, 'costPerAmount', e.target.value)}
                         className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
                       />
                     </div>
@@ -247,18 +299,39 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
             <section className="space-y-4">
               <div className="flex items-center gap-2 text-stone-900">
                 <ListChecks className="w-5 h-5" />
-                <h3 className="font-bold text-lg">Nguyên liệu</h3>
+                <h3 className="font-bold text-lg">Nguyên liệu & Chi phí</h3>
               </div>
               <div className="bg-white rounded-3xl border border-stone-100 shadow-sm overflow-hidden">
-                {recipe.ingredients.map((ing: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center p-4 border-b border-stone-50 last:border-0">
-                    <div>
-                      <p className="font-medium text-stone-900">{ing.name}</p>
-                      <p className="text-xs text-stone-500">{ing.amount} {ing.unit}</p>
-                    </div>
-                    <p className="text-stone-400 text-sm">${ing.price?.toLocaleString()}</p>
-                  </div>
-                ))}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left border-collapse">
+                    <thead>
+                      <tr className="bg-stone-50 border-b border-stone-100">
+                        <th className="p-4 font-bold text-stone-600">Tên nguyên liệu</th>
+                        <th className="p-4 font-bold text-stone-600 text-right">Định lượng</th>
+                        <th className="p-4 font-bold text-stone-600 text-right">Giá nhập</th>
+                        <th className="p-4 font-bold text-stone-600 text-right">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recipe.ingredients.map((ing: any, i: number) => (
+                        <tr key={i} className="border-b border-stone-50 last:border-0 hover:bg-stone-50/50 transition-colors">
+                          <td className="p-4">
+                            <p className="font-medium text-stone-900">{ing.name}</p>
+                          </td>
+                          <td className="p-4 text-right">
+                            <p className="text-stone-600">{ing.amount} {ing.unit}</p>
+                          </td>
+                          <td className="p-4 text-right">
+                            <p className="text-stone-400">${ing.purchasePrice?.toLocaleString()}</p>
+                          </td>
+                          <td className="p-4 text-right">
+                            <p className="font-bold text-stone-900">${ing.costPerAmount?.toLocaleString()}</p>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </section>
 

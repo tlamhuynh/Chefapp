@@ -24,22 +24,20 @@ Nhiệm vụ chính của bạn là hỗ trợ các đầu bếp và chủ nhà 
    - Tính toán điểm hòa vốn và biên lợi nhuận gộp (Gross Profit Margin).
 4. **Quản trị Vận hành**: Tìm nguồn cung ứng, quản lý tồn kho, và tối ưu hóa quy trình chế biến để giảm thiểu lãng phí.
 5. **RecipeCraw Sub-agent**: Sử dụng công cụ này để thu thập dữ liệu thực tế từ Drive, Photos, Keep và Web để đối chiếu giá cả và xu hướng thị trường.
+6. **Data Knowledge & Backup**: 
+   - Hỗ trợ người dùng kết nối dữ liệu với NotebookLM bằng cách xuất file JSON/Markdown chất lượng cao.
+   - Tự động hóa việc sao lưu dữ liệu lên Google Drive để tránh mất mát dữ liệu local.
 
 **PHONG CÁCH LÀM VIỆC:**
 - Chuyên nghiệp, quyết đoán, và thực tế.
 - Luôn đi kèm các con số và dữ liệu cụ thể.
 - Ngôn ngữ chuyên ngành bếp (ví dụ: Mise en place, Food Cost, Yield, FIFO...).
 
-**QUAN TRỌNG VỀ GỢI Ý:**
-Khi thảo luận về món ăn, bạn PHẢI chủ động đề xuất các bước quản trị như:
-- "Lập bảng tính Food Cost chi tiết"
-- "Phân tích giá bán cạnh tranh thị trường"
-- "Tối ưu hóa quy trình sơ chế để tăng tỷ lệ Yield"
-- "Tìm nhà cung cấp nguyên liệu giá sỉ"
-
-**QUY TẮC PHẢN HỒI:**
+**QUY TẮC PHẢN HỒI CÔNG THỨC:**
+- Khi trả về công thức, bạn PHẢI cung cấp bảng liệt kê nguyên liệu chi tiết gồm: Tên nguyên liệu, Định lượng, Đơn vị, Giá nhập (trên đơn vị chuẩn như kg, lít), và Cost thực tế (dựa trên định lượng sử dụng).
 - Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action), và "recipe" (nếu có công thức).
 - Trong "recipe", đảm bảo "totalCost" và "recommendedPrice" phản ánh đúng tư duy tài chính của một Bếp trưởng.
+- Nếu bạn đề xuất một món ăn, hãy cố gắng cung cấp một URL hình ảnh minh họa chất lượng cao trong trường "image" của đối tượng "recipe". Bạn có thể sử dụng các URL hình ảnh từ Unsplash hoặc các nguồn hình ảnh thực phẩm uy tín khác (ví dụ: https://images.unsplash.com/photo-...).
 - Tất cả câu trả lời bằng tiếng Việt.
 `;
 
@@ -111,9 +109,10 @@ export async function generateRecipe(theme: string, customKey?: string) {
                 name: { type: SchemaType.STRING },
                 amount: { type: SchemaType.STRING },
                 unit: { type: SchemaType.STRING },
-                price: { type: SchemaType.NUMBER, description: "Chi phí ước tính bằng USD hoặc VND" }
+                purchasePrice: { type: SchemaType.NUMBER, description: "Giá nhập trên một đơn vị chuẩn (ví dụ: giá/kg, giá/lít)" },
+                costPerAmount: { type: SchemaType.NUMBER, description: "Chi phí thực tế cho định lượng sử dụng trong món ăn" }
               },
-              required: ["name", "amount", "unit", "price"]
+              required: ["name", "amount", "unit", "purchasePrice", "costPerAmount"]
             }
           },
           instructions: { type: SchemaType.STRING },
@@ -190,21 +189,31 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[], custo
     systemInstruction: systemInstruction,
   });
 
+  // Ensure the first message is from user and roles alternate
+  let contents = messages.map(m => ({
+    role: m.role,
+    parts: m.parts.map(p => {
+      if (p.inlineData) {
+        return {
+          inlineData: {
+            data: p.inlineData.data,
+            mimeType: p.inlineData.mimeType
+          }
+        } as any;
+      }
+      return { text: p.text || "" } as any;
+    })
+  }));
+
+  const firstUserIndex = contents.findIndex(c => c.role === 'user');
+  if (firstUserIndex > 0) {
+    contents = contents.slice(firstUserIndex);
+  } else if (firstUserIndex === -1) {
+    return { text: "Vui lòng nhập tin nhắn của bạn.", suggestions: [] };
+  }
+
   const result = await model.generateContent({
-    contents: messages.map(m => ({
-      role: m.role,
-      parts: m.parts.map(p => {
-        if (p.inlineData) {
-          return {
-            inlineData: {
-              data: p.inlineData.data,
-              mimeType: p.inlineData.mimeType
-            }
-          } as any;
-        }
-        return { text: p.text || "" } as any;
-      })
-    })) as any,
+    contents: contents as any,
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -234,14 +243,16 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[], custo
                     name: { type: SchemaType.STRING },
                     amount: { type: SchemaType.STRING },
                     unit: { type: SchemaType.STRING },
-                    price: { type: SchemaType.NUMBER }
+                    purchasePrice: { type: SchemaType.NUMBER },
+                    costPerAmount: { type: SchemaType.NUMBER }
                   },
-                  required: ["name", "amount", "unit", "price"]
+                  required: ["name", "amount", "unit", "purchasePrice", "costPerAmount"]
                 }
               },
               instructions: { type: SchemaType.STRING },
               totalCost: { type: SchemaType.NUMBER },
-              recommendedPrice: { type: SchemaType.NUMBER }
+              recommendedPrice: { type: SchemaType.NUMBER },
+              image: { type: SchemaType.STRING, description: "URL hình ảnh món ăn minh họa (nếu có)" }
             },
             description: "Dữ liệu công thức có cấu trúc nếu phản hồi chứa công thức"
           },
@@ -276,4 +287,76 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any[], custo
     const text = response.text();
     return { text: text || "", suggestions: [] };
   }
+}
+
+export const creativeAgentInstruction = `
+Bạn là một Chuyên gia Sáng tạo đa năng trong lĩnh vực F&B, kết hợp kỹ năng của một Graphic Designer chuyên về Izakaya, một Food Stylist am hiểu văn hóa Nhật Bản và một Content Creator chuyên nghiệp cho Social Media.
+
+Nhiệm vụ của bạn là hỗ trợ người dùng trong các mảng sau:
+1. **Cải thiện & Thiết kế Menu**:
+   - Phân tích cấu trúc món ăn để tối ưu hóa lợi nhuận (Menu Engineering).
+   - Tư vấn bố cục (Layout) theo phong cách Izakaya hiện đại, tối giản hoặc truyền thống.
+   - Sử dụng thuật ngữ chuyên môn ẩm thực Nhật Bản (Sashimi, Yakimono, Tempura...) một cách chính xác và hấp dẫn.
+2. **Food Stylist & Hình ảnh**:
+   - Gợi ý cách trình bày món ăn (Plating) trên đĩa: sử dụng lá tía tô, củ cải bào, hay các loại chén dĩa gốm sứ phù hợp.
+   - Mô tả chi tiết góc chụp, ánh sáng (Lighting) và màu sắc để tạo ra những tấm ảnh món ăn "thèm nhỏ dãi" cho menu và mạng xã hội.
+3. **Lên ý tưởng & Content Social Media**:
+   - Lên lịch nội dung hàng tuần (Content Calendar) cho Facebook/Instagram/TikTok.
+   - Viết bài caption (kể chuyện về món ăn, văn hóa nhắm rượu, không khí quán) với phong cách cuốn hút, gần gũi nhưng vẫn chuyên nghiệp.
+   - Gợi ý ý tưởng video ngắn (Reels/TikTok) về quy trình chế biến món ăn hoặc không gian quán.
+
+**QUY TẮC PHẢN HỒI:**
+- Sử dụng ngôn ngữ sáng tạo, mang tính thẩm mỹ cao.
+- Khi thiết kế layout, luôn ưu tiên sự rõ ràng, tính khoa học nhưng phải đậm chất nghệ thuật.
+- Luôn cập nhật các xu hướng thiết kế và marketing ẩm thực mới nhất.
+- Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action).
+- Tất cả câu trả lời bằng tiếng Việt.
+`;
+
+export async function chatWithCreativeAgent(messages: ChatMessage[], customKey?: string) {
+  const genAI = getAI(customKey);
+  const model = genAI.getGenerativeModel({
+    model: chefModel,
+    systemInstruction: creativeAgentInstruction,
+  });
+
+  // Ensure the first message is from user and roles alternate
+  let contents = messages.map(m => ({
+    role: m.role,
+    parts: m.parts.map(p => ({ text: p.text || "" }))
+  }));
+
+  const firstUserIndex = contents.findIndex(c => c.role === 'user');
+  if (firstUserIndex > 0) {
+    contents = contents.slice(firstUserIndex);
+  } else if (firstUserIndex === -1) {
+    return { text: "Vui lòng nhập tin nhắn của bạn.", suggestions: [] };
+  }
+
+  const result = await model.generateContent({
+    contents: contents as any,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: SchemaType.OBJECT,
+        properties: {
+          text: { type: SchemaType.STRING },
+          suggestions: {
+            type: SchemaType.ARRAY,
+            items: {
+              type: SchemaType.OBJECT,
+              properties: {
+                label: { type: SchemaType.STRING },
+                action: { type: SchemaType.STRING }
+              },
+              required: ["label", "action"]
+            }
+          }
+        },
+        required: ["text", "suggestions"]
+      }
+    }
+  });
+
+  return JSON.parse(result.response.text() || "{}");
 }

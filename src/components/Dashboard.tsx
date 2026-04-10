@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Camera, TrendingUp, DollarSign, ShoppingBag, ChefHat, ChevronRight, Calendar } from 'lucide-react';
+import { Search, Plus, Camera, TrendingUp, DollarSign, ShoppingBag, ChefHat, ChevronRight, Calendar, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateRecipe } from '../lib/gemini';
 import { db, collection, addDoc, serverTimestamp, auth, query, where, orderBy, onSnapshot } from '../lib/firebase';
@@ -97,43 +97,38 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="p-6 space-y-8"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="space-y-10 py-4"
     >
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-stone-900">Chào Chef,</h1>
-          <p className="text-stone-500 text-sm">Hôm nay chúng ta nấu gì?</p>
+      <header className="flex justify-between items-end px-2">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-serif font-bold text-stone-900 tracking-tight">SousChef</h1>
+          <p className="text-stone-400 text-xs font-medium uppercase tracking-[0.2em]">Executive Assistant</p>
         </div>
-        <div className="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center">
-          <ChefHat className="w-6 h-6 text-orange-600" />
+        <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center shadow-lg shadow-stone-200">
+          <ChefHat className="w-6 h-6 text-white" />
         </div>
       </header>
 
       {/* Recipe Search/Generate */}
       <section className="space-y-4">
-        <div className="relative">
+        <div className="relative group">
           <input
             type="text"
-            placeholder="Nhập chủ đề (vd: Hải sản mùa hè)"
+            placeholder="Hôm nay chúng ta nấu gì?"
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
-            className="w-full bg-white border border-stone-200 rounded-2xl py-4 px-6 pr-14 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all shadow-sm"
+            className="input-base pr-16"
           />
           <button
             onClick={() => handleGenerate()}
             disabled={isGenerating || !theme}
-            className="absolute right-2 top-2 bottom-2 w-10 bg-orange-600 rounded-xl flex items-center justify-center text-white hover:bg-orange-700 disabled:opacity-50 transition-colors"
+            className="absolute right-2 top-2 bottom-2 px-4 bg-stone-900 rounded-xl flex items-center justify-center text-white hover:bg-stone-800 disabled:opacity-30 transition-all active:scale-95"
           >
             {isGenerating ? (
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              >
-                <Plus className="w-5 h-5" />
-              </motion.div>
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               <Search className="w-5 h-5" />
             )}
@@ -141,100 +136,113 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         </div>
       </section>
 
-      {/* Filter Recipes Search Bar */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-stone-900">Bộ lọc nhanh</h3>
-          <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">{filteredRecipes.length} Công thức</span>
-        </div>
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-          <input
-            type="text"
-            placeholder="Tìm theo chủ đề hoặc nguyên liệu..."
-            value={searchFilter}
-            onChange={(e) => setSearchFilter(e.target.value)}
-            className="w-full bg-stone-100 border-none rounded-xl py-3 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
-          />
-        </div>
-
-        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-          {searchFilter && filteredRecipes.length > 0 ? (
-            filteredRecipes.map((recipe) => (
-              <motion.button
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                key={recipe.id}
-                onClick={() => setSelectedRecipe(recipe)}
-                className="w-full bg-white p-4 rounded-2xl border border-stone-100 shadow-sm hover:shadow-md transition-all text-left flex items-center gap-3 group"
-              >
-                <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center group-hover:bg-orange-50 transition-colors">
-                  <ChefHat className="w-5 h-5 text-stone-400 group-hover:text-orange-500 transition-colors" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-stone-900 text-sm truncate">{recipe.title}</h4>
-                  <p className="text-[10px] text-stone-400 truncate">
-                    {recipe.ingredients?.map((i: any) => i.name).join(', ')}
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-stone-300" />
-              </motion.button>
-            ))
-          ) : searchFilter ? (
-            <p className="text-center text-xs text-stone-400 py-4">Không tìm thấy công thức phù hợp.</p>
-          ) : null}
-        </div>
-      </section>
-
-      {/* Quick Actions */}
+      {/* Quick Actions - Bento Grid Style */}
       <section className="grid grid-cols-2 gap-4">
         <button
           onClick={() => setShowOrderAnalysis(true)}
-          className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all text-left space-y-3 group"
+          className="glass-card p-6 rounded-3xl hover:bg-white transition-all text-left space-y-4 group active:scale-[0.98]"
         >
-          <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-            <Camera className="w-5 h-5 text-blue-600" />
+          <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+            <Camera className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-bold text-stone-900">Phân tích đơn</h3>
-            <p className="text-xs text-stone-500">Quét đơn hàng từ ảnh</p>
+            <h3 className="font-bold text-stone-900">Quét đơn</h3>
+            <p className="text-[10px] text-stone-400 uppercase tracking-wider font-bold">Phân tích ảnh</p>
           </div>
         </button>
         <button
           onClick={() => setActiveTab('chat')}
-          className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all text-left space-y-3 group"
+          className="glass-card p-6 rounded-3xl hover:bg-white transition-all text-left space-y-4 group active:scale-[0.98]"
         >
-          <div className="w-10 h-10 bg-purple-50 rounded-xl flex items-center justify-center group-hover:bg-purple-100 transition-colors">
-            <TrendingUp className="w-5 h-5 text-purple-600" />
+          <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
+            <TrendingUp className="w-6 h-6" />
           </div>
           <div>
             <h3 className="font-bold text-stone-900">Xu hướng</h3>
-            <p className="text-xs text-stone-500">Hỏi về giá thị trường</p>
+            <p className="text-[10px] text-stone-400 uppercase tracking-wider font-bold">Giá thị trường</p>
           </div>
         </button>
       </section>
 
-      {/* Sub-agent Stats (Mock/Placeholder for now) */}
-      <section className="bg-stone-900 rounded-[2rem] p-6 text-white space-y-6">
-        <div className="flex justify-between items-center">
-          <h3 className="font-bold text-lg">Sub-agent Insights</h3>
-          <span className="text-[10px] bg-stone-800 px-2 py-1 rounded-full uppercase tracking-widest text-stone-400">Live</span>
+      {/* Stats Section - Minimalist */}
+      <section className="bg-stone-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl shadow-stone-300">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-3xl" />
+        <div className="relative z-10 space-y-8">
+          <div className="flex justify-between items-center">
+            <h3 className="font-serif italic text-xl">Kitchen Insights</h3>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Live Data</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-8">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">Food Cost TB</span>
+              <p className="text-3xl font-bold tracking-tighter">28.4<span className="text-lg text-stone-500 ml-1">%</span></p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">Giá trị kho</span>
+              <p className="text-3xl font-bold tracking-tighter">
+                <span className="text-lg text-stone-500 mr-1">$</span>
+                {recipes.reduce((acc, r) => acc + (r.totalCost || 0), 0).toLocaleString()}
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-stone-400">
-              <DollarSign className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wider">Food Cost TB</span>
-            </div>
-            <p className="text-2xl font-bold">28.4%</p>
+      </section>
+
+      {/* Shopping List - Clean Table */}
+      {recipes.length > 0 && (
+        <section className="space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="font-serif text-xl font-bold text-stone-900">Đi chợ nhanh</h3>
+            <button 
+              onClick={() => setActiveTab('recipes')}
+              className="text-[10px] font-bold uppercase tracking-widest text-stone-400 hover:text-stone-900 transition-colors"
+            >
+              Tất cả
+            </button>
           </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-stone-400">
-              <ShoppingBag className="w-4 h-4" />
-              <span className="text-xs uppercase tracking-wider">Giá trị kho</span>
+          <div className="glass-card rounded-[2rem] p-6 space-y-4">
+            <div className="space-y-1">
+              {recipes.slice(0, 3).flatMap(r => r.ingredients || []).slice(0, 5).map((ing: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-3 border-b border-stone-100 last:border-0 group">
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-1 rounded-full bg-stone-300 group-hover:bg-stone-900 transition-colors" />
+                    <span className="text-sm font-medium text-stone-700">{ing.name}</span>
+                  </div>
+                  <span className="text-xs font-bold text-stone-400">{ing.amount} {ing.unit}</span>
+                </div>
+              ))}
             </div>
-            <p className="text-2xl font-bold">$4,250</p>
           </div>
+        </section>
+      )}
+
+      {/* Filter/Search - Secondary */}
+      <section className="space-y-4 px-2">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+          <input
+            type="text"
+            placeholder="Tìm công thức cũ..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            className="w-full bg-stone-200/50 border-none rounded-2xl py-3 pl-11 pr-4 text-sm focus:ring-2 focus:ring-stone-900/10 transition-all"
+          />
+        </div>
+
+        <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar">
+          {searchFilter && filteredRecipes.length > 0 && filteredRecipes.map((recipe) => (
+            <button
+              key={recipe.id}
+              onClick={() => setSelectedRecipe(recipe)}
+              className="w-full p-4 rounded-2xl hover:bg-white transition-all text-left flex items-center justify-between group"
+            >
+              <span className="font-bold text-stone-900 text-sm truncate">{recipe.title}</span>
+              <ChevronRight className="w-4 h-4 text-stone-300 group-hover:text-stone-900 transition-colors" />
+            </button>
+          ))}
         </div>
       </section>
 
