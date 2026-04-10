@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, deleteDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
+import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
 import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool } from '../lib/gemini';
 import { chatWithAI, AVAILABLE_MODELS, AIModel } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -94,6 +94,7 @@ interface ChatMessageData {
   text: string;
   sender: 'user' | 'ai';
   userId: string;
+  conversationId?: string;
   timestamp: any;
   suggestions?: { label: string; action: string }[];
   recipe?: {
@@ -110,8 +111,20 @@ interface ChatMessageData {
   photos?: { url: string; filename: string }[];
 }
 
+interface ConversationData {
+  id: string;
+  title: string;
+  userId: string;
+  lastMessage?: string;
+  updatedAt: any;
+  createdAt: any;
+}
+
 export function ChefChat() {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
+  const [conversations, setConversations] = useState<ConversationData[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -121,7 +134,8 @@ export function ChefChat() {
     chatBackground: 'bg-stone-50',
     selectedModelId: 'gemini-flash-latest',
     openaiKey: '',
-    anthropicKey: ''
+    anthropicKey: '',
+    googleKey: ''
   });
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
@@ -186,21 +200,46 @@ export function ChefChat() {
     };
     loadPrefs();
 
+    // Listen for conversations
+    const convQ = query(
+      collection(db, 'conversations'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('updatedAt', 'desc')
+    );
+    const unsubscribeConv = onSnapshot(convQ, (snapshot) => {
+      const convs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ConversationData[];
+      setConversations(convs);
+      
+      // Auto-select first conversation if none selected
+      if (convs.length > 0 && !activeConversationId) {
+        setActiveConversationId(convs[0].id);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'conversations');
+    });
+
+    return () => unsubscribeConv();
+  }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser || !activeConversationId) {
+      setMessages([]);
+      return;
+    }
+
     const q = query(
       collection(db, 'chats'),
       where('userId', '==', auth.currentUser.uid),
+      where('conversationId', '==', activeConversationId),
       orderBy('timestamp', 'asc')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ChatMessageData[];
       setMessages(msgs);
       
-      console.log("Messages updated:", msgs.length, "last status:", msgs[msgs.length - 1]?.status);
+      console.log("Messages updated for conv:", activeConversationId, msgs.length);
 
       // Check for pending messages to process
-      const lastMsg = msgs[msgs.length - 1];
-      
-      // Pick up 'pending' OR 'processing' messages that might have been interrupted
       const needsProcessing = msgs.find(m => 
         m.sender === 'user' && 
         (m.status === 'pending' || m.status === 'processing')
@@ -214,11 +253,30 @@ export function ChefChat() {
       handleFirestoreError(error, OperationType.LIST, 'chats');
     });
     return () => unsubscribe();
-  }, [isProcessing, preferences.selectedModelId, googleToken]); // Re-run if processing state or config changes
+  }, [activeConversationId, isProcessing, preferences.selectedModelId, googleToken]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const deleteConversation = async (id: string) => {
+    if (!auth.currentUser) return;
+    try {
+      await deleteDoc(doc(db, 'conversations', id));
+      // Also delete messages in this conversation
+      const msgQ = query(collection(db, 'chats'), where('conversationId', '==', id));
+      const msgSnapshot = await getDocs(msgQ);
+      const deletePromises = msgSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+      
+      if (activeConversationId === id) {
+        setActiveConversationId(null);
+        setMessages([]);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'conversations');
+    }
+  };
 
   const clearChatHistory = async () => {
     if (!auth.currentUser) return;
@@ -274,7 +332,8 @@ export function ChefChat() {
           chatBackground: 'bg-stone-50',
           selectedModelId: 'gemini-flash-latest',
           openaiKey: '',
-          anthropicKey: ''
+          anthropicKey: '',
+          googleKey: ''
         }
       });
       
@@ -285,7 +344,8 @@ export function ChefChat() {
         chatBackground: 'bg-stone-50',
         selectedModelId: 'gemini-flash-latest',
         openaiKey: '',
-        anthropicKey: ''
+        anthropicKey: '',
+        googleKey: ''
       });
       setConfirmClearAll(false);
       setShowSettings(false);
@@ -419,7 +479,7 @@ export function ChefChat() {
       
       try {
         if (currentModel?.provider === 'google') {
-          aiResult = await chatWithChef(history, tools);
+          aiResult = await chatWithChef(history, tools, preferences.googleKey);
           
           if (aiResult.functionCalls) {
             for (const call of aiResult.functionCalls) {
@@ -440,7 +500,7 @@ export function ChefChat() {
                 role: 'user', 
                 parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
               });
-              aiResult = await chatWithChef(history, tools);
+              aiResult = await chatWithChef(history, tools, preferences.googleKey);
             }
           }
         } else {
@@ -450,7 +510,7 @@ export function ChefChat() {
             history, 
             systemInstruction,
             undefined,
-            { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey }
+            { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey, googleKey: preferences.googleKey }
           );
         }
 
@@ -472,8 +532,17 @@ export function ChefChat() {
           photos: aiResult.photos || null,
           sender: 'ai',
           userId: auth.currentUser.uid,
+          conversationId: userMsg.conversationId,
           timestamp: serverTimestamp()
         });
+
+        // Update conversation last message with AI response
+        if (userMsg.conversationId) {
+          await updateDoc(doc(db, 'conversations', userMsg.conversationId), {
+            lastMessage: aiResult.text?.slice(0, 100) || "Phản hồi từ AI",
+            updatedAt: serverTimestamp()
+          });
+        }
       } catch (aiError: any) {
         console.error("AI Call failed:", aiError);
         await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
@@ -546,10 +615,31 @@ export function ChefChat() {
     const textToSend = overrideText || inputText;
     if ((!textToSend.trim() && selectedFiles.length === 0) || !auth.currentUser) return;
 
+    let convId = activeConversationId;
+    
+    // Create new conversation if none active
+    if (!convId) {
+      try {
+        const convRef = await addDoc(collection(db, 'conversations'), {
+          title: textToSend.slice(0, 30) + (textToSend.length > 30 ? '...' : ''),
+          userId: auth.currentUser.uid,
+          lastMessage: textToSend,
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp()
+        });
+        convId = convRef.id;
+        setActiveConversationId(convId);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'conversations');
+        return;
+      }
+    }
+
     const userMessage = {
       text: textToSend,
       sender: 'user',
       userId: auth.currentUser.uid,
+      conversationId: convId,
       timestamp: serverTimestamp(),
       hasFiles: selectedFiles.length > 0,
       fileNames: selectedFiles.map(f => f.name),
@@ -562,6 +652,11 @@ export function ChefChat() {
     // We don't call AI here anymore, the useEffect will pick up the 'pending' message
     try {
       await addDoc(collection(db, 'chats'), userMessage);
+      // Update conversation last message
+      await updateDoc(doc(db, 'conversations', convId), {
+        lastMessage: textToSend,
+        updatedAt: serverTimestamp()
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'chats');
     }
@@ -619,6 +714,16 @@ export function ChefChat() {
     const { systemInstruction } = await import('../lib/gemini');
 
     for (const model of AVAILABLE_MODELS) {
+      // Skip models that don't have keys provided
+      if (model.provider === 'openai' && !preferences.openaiKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenAI API Key' } }));
+        continue;
+      }
+      if (model.provider === 'anthropic' && !preferences.anthropicKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Anthropic API Key' } }));
+        continue;
+      }
+
       try {
         // Simple ping test - use a very short prompt
         const result = await chatWithAI(
@@ -626,7 +731,7 @@ export function ChefChat() {
           [{ role: 'user', parts: [{ text: 'Hi' }] }], 
           "Chỉ trả về JSON rỗng {}",
           undefined,
-          { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey }
+          { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey, googleKey: preferences.googleKey }
         );
         if (result) {
           setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
@@ -635,7 +740,16 @@ export function ChefChat() {
         }
       } catch (error: any) {
         console.error(`API check failed for ${model.id}:`, error);
-        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: error.message || "Lỗi không xác định" } }));
+        const errorStr = String(error).toLowerCase();
+        let msg = error.message || "Lỗi không xác định";
+        
+        if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
+          msg = "Hết hạn mức (Quota Exceeded). Vui lòng kiểm tra tài khoản hoặc đổi model.";
+        } else if (errorStr.includes('api_key') || errorStr.includes('invalid_api_key')) {
+          msg = "API Key không hợp lệ. Vui lòng kiểm tra lại.";
+        }
+        
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: msg } }));
       }
     }
   };
@@ -766,6 +880,16 @@ export function ChefChat() {
               className="p-2 md:hidden hover:bg-stone-100 rounded-lg text-stone-500 transition-colors"
             >
               <Search className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className={cn(
+                "p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold",
+                showHistory ? "bg-orange-100 text-orange-600" : "hover:bg-stone-100 text-stone-500"
+              )}
+            >
+              <MessageSquare className="w-5 h-5" />
+              <span className="hidden lg:inline">Lịch sử</span>
             </button>
             <button
               onClick={() => setIsRecipeCrawActive(!isRecipeCrawActive)}
@@ -1050,18 +1174,27 @@ export function ChefChat() {
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
 
-                {activeSettingsTab === 'status' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                    <div className="space-y-4">
+                    <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-4">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Cấu hình API Keys</label>
                         <span className="text-[10px] text-stone-400 italic">Keys được lưu bảo mật trong hồ sơ của bạn</span>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                          <label className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+                            Google API Key
+                          </label>
+                          <input
+                            type="password"
+                            value={preferences.googleKey || ''}
+                            onChange={(e) => updatePreference('googleKey', e.target.value)}
+                            placeholder="AIza..."
+                            className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                          />
+                        </div>
                         <div className="space-y-2">
                           <label className="text-xs font-medium text-stone-600">OpenAI API Key</label>
                           <input
@@ -1069,7 +1202,7 @@ export function ChefChat() {
                             value={preferences.openaiKey || ''}
                             onChange={(e) => updatePreference('openaiKey', e.target.value)}
                             placeholder="sk-..."
-                            className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                           />
                         </div>
                         <div className="space-y-2">
@@ -1079,7 +1212,7 @@ export function ChefChat() {
                             value={preferences.anthropicKey || ''}
                             onChange={(e) => updatePreference('anthropicKey', e.target.value)}
                             placeholder="sk-ant-..."
-                            className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                            className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                           />
                         </div>
                       </div>
@@ -1092,28 +1225,62 @@ export function ChefChat() {
                         Lưu & Kiểm tra trạng thái
                       </button>
                     </div>
+                  </div>
+                )}
 
+                {activeSettingsTab === 'status' && (
+                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
                     <div className="space-y-4">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Trạng thái kết nối</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Trạng thái kết nối</label>
+                        <button 
+                          onClick={checkApiStatus}
+                          className="text-[10px] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                        >
+                          <Loader2 className={cn("w-3 h-3", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
+                          Kiểm tra lại
+                        </button>
+                      </div>
                       <div className="space-y-2">
                         {AVAILABLE_MODELS.map(model => (
-                          <div key={model.id} className="flex items-center justify-between p-3 bg-stone-50 rounded-xl border border-stone-100">
-                            <div className="flex items-center gap-3">
-                              <div className={cn(
-                                "w-2 h-2 rounded-full",
-                                apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
-                                apiStatus[model.id]?.status === 'error' ? "bg-red-500" :
-                                "bg-stone-300 animate-pulse"
-                              )} />
-                              <span className="text-sm font-medium text-stone-700">{model.name}</span>
+                          <div key={model.id} className="flex flex-col gap-2 p-3 bg-stone-50 rounded-xl border border-stone-100">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "w-2 h-2 rounded-full",
+                                  apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
+                                  apiStatus[model.id]?.status === 'error' ? "bg-red-500" :
+                                  "bg-stone-300 animate-pulse"
+                                )} />
+                                <span className="text-sm font-medium text-stone-700">{model.name}</span>
+                              </div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider">
+                                {apiStatus[model.id]?.status === 'ok' && <span className="text-green-600">Hoạt động</span>}
+                                {apiStatus[model.id]?.status === 'error' && (
+                                  <span className="text-red-600">Lỗi kết nối</span>
+                                )}
+                                {apiStatus[model.id]?.status === 'checking' && <span className="text-stone-400">Đang kiểm tra...</span>}
+                              </div>
                             </div>
-                            <div className="text-[10px] font-bold uppercase tracking-wider">
-                              {apiStatus[model.id]?.status === 'ok' && <span className="text-green-600">Hoạt động</span>}
-                              {apiStatus[model.id]?.status === 'error' && (
-                                <span className="text-red-600" title={apiStatus[model.id]?.message}>Lỗi kết nối</span>
-                              )}
-                              {apiStatus[model.id]?.status === 'checking' && <span className="text-stone-400">Đang kiểm tra...</span>}
-                            </div>
+                            {apiStatus[model.id]?.status === 'error' && (
+                              <div className="flex flex-col gap-2">
+                                <p className="text-[10px] text-red-500 leading-relaxed italic">
+                                  {apiStatus[model.id]?.message}
+                                </p>
+                                {(apiStatus[model.id]?.message?.includes('Quota') || apiStatus[model.id]?.message?.includes('Key')) && model.id !== 'gemini-flash-latest' && (
+                                  <button
+                                    onClick={() => {
+                                      updatePreference('selectedModelId', 'gemini-flash-latest');
+                                      setShowSettings(false);
+                                    }}
+                                    className="w-fit text-[9px] font-bold uppercase tracking-widest text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                                  >
+                                    <Sparkles className="w-3 h-3" />
+                                    Chuyển sang Gemini (Miễn phí)
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -1202,7 +1369,85 @@ export function ChefChat() {
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Sidebar for History */}
+        <AnimatePresence>
+          {showHistory && (
+            <motion.aside
+              initial={{ x: -300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -300, opacity: 0 }}
+              className="absolute md:relative z-40 w-[280px] h-full bg-white border-r border-stone-200 flex flex-col shadow-xl md:shadow-none"
+            >
+              <div className="p-4 border-b border-stone-100 flex items-center justify-between">
+                <h2 className="font-bold text-stone-900 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-orange-500" />
+                  Lịch sử Chat
+                </h2>
+                <button 
+                  onClick={() => {
+                    setActiveConversationId(null);
+                    setMessages([]);
+                  }}
+                  className="p-1.5 hover:bg-orange-50 text-orange-600 rounded-lg transition-colors"
+                  title="Chat mới"
+                >
+                  <Sparkles className="w-4 h-4" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {conversations.length === 0 ? (
+                  <div className="p-8 text-center space-y-2">
+                    <MessageSquare className="w-8 h-8 text-stone-200 mx-auto" />
+                    <p className="text-xs text-stone-400">Chưa có lịch sử trò chuyện</p>
+                  </div>
+                ) : (
+                  conversations.map(conv => (
+                    <button
+                      key={conv.id}
+                      onClick={() => {
+                        setActiveConversationId(conv.id);
+                        if (window.innerWidth < 768) setShowHistory(false);
+                      }}
+                      className={cn(
+                        "w-full text-left p-3 rounded-xl transition-all group relative",
+                        activeConversationId === conv.id 
+                          ? "bg-orange-50 border-orange-100 ring-1 ring-orange-200" 
+                          : "hover:bg-stone-50 border-transparent"
+                      )}
+                    >
+                      <div className="flex flex-col gap-1">
+                        <span className={cn(
+                          "text-xs font-bold truncate pr-6",
+                          activeConversationId === conv.id ? "text-orange-900" : "text-stone-700"
+                        )}>
+                          {conv.title}
+                        </span>
+                        <span className="text-[10px] text-stone-400 truncate">
+                          {conv.lastMessage || "Chưa có tin nhắn"}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation(conv.id);
+                        }}
+                        className="absolute top-3 right-2 p-1 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </button>
+                  ))
+                )}
+              </div>
+            </motion.aside>
+          )}
+        </AnimatePresence>
+
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {filteredMessages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-6 animate-in fade-in zoom-in duration-700">
             <div className="relative">
@@ -1478,6 +1723,8 @@ export function ChefChat() {
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
+  </div>
+</motion.div>
   );
 }

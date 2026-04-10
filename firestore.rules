@@ -118,11 +118,12 @@ service cloud.firestore {
     }
 
     function isValidChatMessage(data) {
-      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'status', 'hasFiles', 'fileNames', 'files', 'suggestions', 'recipe', 'photos']) &&
+      return hasOnlyAllowedFields(['text', 'sender', 'timestamp', 'userId', 'conversationId', 'status', 'hasFiles', 'fileNames', 'files', 'suggestions', 'recipe', 'photos']) &&
              data.text is string && data.text.size() > 0 && data.text.size() < 10000 &&
              data.sender in ['user', 'ai'] &&
              data.userId is string &&
              data.timestamp is timestamp &&
+             (!('conversationId' in data) || data.conversationId is string) &&
              (!('status' in data) || data.status in ['pending', 'processing', 'completed', 'error']) &&
              (!('hasFiles' in data) || data.hasFiles is bool) &&
              (!('fileNames' in data) || data.fileNames is list) &&
@@ -130,6 +131,15 @@ service cloud.firestore {
              (!('suggestions' in data) || data.suggestions is list) &&
              (!('recipe' in data) || data.recipe is map) &&
              (!('photos' in data) || data.photos is list);
+    }
+
+    function isValidConversation(data) {
+      return hasOnlyAllowedFields(['title', 'userId', 'lastMessage', 'updatedAt', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.userId is string &&
+             (!('lastMessage' in data) || data.lastMessage is string) &&
+             data.updatedAt is timestamp &&
+             data.createdAt is timestamp;
     }
 
     // ===============================================================
@@ -154,6 +164,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidOrder(request.resource.data) && isOwner(request.resource.data.authorId);
       allow update: if isAuthenticated() && isValidOrder(request.resource.data) && isOwner(resource.data.authorId) && request.resource.data.authorId == resource.data.authorId;
       allow delete: if isAuthenticated() && isOwner(resource.data.authorId) || isAdmin();
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidConversation(request.resource.data) && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isValidConversation(request.resource.data) && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId) || isAdmin();
     }
 
     match /chats/{chatId} {

@@ -74,6 +74,7 @@
         "sender": { "type": "string", "enum": ["user", "ai"] },
         "timestamp": { "type": "string", "format": "date-time" },
         "userId": { "type": "string" },
+        "conversationId": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "processing", "completed", "error"] },
         "hasFiles": { "type": "boolean" },
         "fileNames": { "type": "array", "items": { "type": "string" } },
@@ -83,6 +84,19 @@
         "photos": { "type": "array" }
       },
       "required": ["text", "sender", "userId"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A chat conversation thread",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "userId": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title"]
     }
   },
   "firestore": {
@@ -97,6 +111,10 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Order analysis"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Chat conversations"
     },
     "/chats/{chatId}": {
       "schema": "ChatMessage",

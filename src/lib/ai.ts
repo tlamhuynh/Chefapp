@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -22,22 +22,20 @@ export const AVAILABLE_MODELS: AIModel[] = [
 ];
 
 // Clients (Lazy initialization)
-let googleAI: GoogleGenAI | null = null;
+let googleAI: GoogleGenerativeAI | null = null;
 let openaiClient: OpenAI | null = null;
 let anthropicClient: Anthropic | null = null;
 
 export interface AIConfig {
   openaiKey?: string;
   anthropicKey?: string;
+  googleKey?: string;
 }
 
-function getGoogleAI() {
-  if (!googleAI) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY is missing");
-    googleAI = new GoogleGenAI({ apiKey: key });
-  }
-  return googleAI;
+function getGoogleAI(customKey?: string) {
+  const key = customKey || process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY is missing. Vui lòng cấu hình trong Settings.");
+  return new GoogleGenerativeAI(key);
 }
 
 function getOpenAI(customKey?: string) {
@@ -64,9 +62,13 @@ export async function chatWithAI(
   const model = AVAILABLE_MODELS.find(m => m.id === modelId) || AVAILABLE_MODELS[0];
 
   if (model.provider === 'google') {
-    const ai = getGoogleAI();
-    const response = await ai.models.generateContent({
+    const genAI = getGoogleAI(config?.googleKey);
+    const modelInstance = genAI.getGenerativeModel({
       model: model.id,
+      systemInstruction: systemInstruction,
+    });
+
+    const response = await modelInstance.generateContent({
       contents: messages.map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: m.parts.map((p: any) => {
@@ -81,13 +83,12 @@ export async function chatWithAI(
           return { text: p.text || "" };
         })
       })),
-      config: {
-        systemInstruction: systemInstruction,
+      generationConfig: {
         responseMimeType: "application/json",
       }
     });
 
-    const text = response.text || "";
+    const text = response.response.text();
     
     try {
       return JSON.parse(text);
