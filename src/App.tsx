@@ -47,8 +47,17 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login failed", error);
+      let msg = "Đăng nhập thất bại. Vui lòng thử lại.";
+      if (error.code === 'auth/operation-not-allowed') {
+        msg = "Phương thức đăng nhập này chưa được bật trong Firebase Console.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        msg = "Tên miền này chưa được cấp phép trong Firebase Console.";
+      } else if (error.message?.includes('requested action is invalid')) {
+        msg = "Lỗi cấu hình Firebase (Action Invalid). Vui lòng kiểm tra SHA-1 (cho APK) hoặc Authorized Domains.";
+      }
+      alert(msg);
     }
   };
 
@@ -78,13 +87,13 @@ export default function App() {
               <ChefHat className="w-10 h-10 text-orange-600" />
             </div>
             <h1 className="text-3xl font-bold text-stone-900 mb-2">SousChef AI</h1>
-            <p className="text-stone-600 mb-8">Trợ lý bếp chuyên nghiệp của bạn. Tạo công thức, tính giá cost và tư vấn chuyên gia.</p>
+            <p className="text-stone-600 mb-8">Trợ lý bếp chuyên nghiệp của bạn. Tạo công thức, tính giá cost và tư vấn chuyên gia. (Phiên bản Local)</p>
             <button
               onClick={handleLogin}
               className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-orange-200"
             >
-              <LogIn className="w-5 h-5" />
-              Đăng nhập với Google
+              <ChefHat className="w-5 h-5" />
+              Bắt đầu ngay
             </button>
           </motion.div>
         </div>

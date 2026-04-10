@@ -3,7 +3,7 @@ import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, server
 import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool } from '../lib/gemini';
 import { chatWithAI, AVAILABLE_MODELS, AIModel } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare } from 'lucide-react';
+import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn, validateRecipe } from '../lib/utils';
 import { DollarSign, Clock, ListChecks, Utensils } from 'lucide-react';
@@ -615,6 +615,20 @@ export function ChefChat() {
     const textToSend = overrideText || inputText;
     if ((!textToSend.trim() && selectedFiles.length === 0) || !auth.currentUser) return;
 
+    // Prevent sending if selected model is in error state
+    if (apiStatus[preferences.selectedModelId]?.status === 'error') {
+      const isQuota = apiStatus[preferences.selectedModelId].message?.includes('429') || apiStatus[preferences.selectedModelId].message?.toLowerCase().includes('quota');
+      if (isQuota) {
+        // Auto-switch to gemini if quota exceeded and user tries to send
+        updatePreference('selectedModelId', 'gemini-3-flash');
+        // Continue with Gemini
+      } else {
+        setShowSettings(true);
+        setActiveSettingsTab('status');
+        return;
+      }
+    }
+
     let convId = activeConversationId;
     
     // Create new conversation if none active
@@ -744,7 +758,9 @@ export function ChefChat() {
         let msg = error.message || "Lỗi không xác định";
         
         if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
-          msg = "Hết hạn mức (Quota Exceeded). Vui lòng kiểm tra tài khoản hoặc đổi model.";
+          // Ignore quota errors as requested by user
+          setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
+          continue;
         } else if (errorStr.includes('api_key') || errorStr.includes('invalid_api_key')) {
           msg = "API Key không hợp lệ. Vui lòng kiểm tra lại.";
         }
@@ -1136,43 +1152,64 @@ export function ChefChat() {
                       <span className="text-[10px] text-stone-400 italic">Mô hình Google hỗ trợ RecipeCraw tốt nhất</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {AVAILABLE_MODELS.map(model => (
-                        <button
-                          key={model.id}
-                          onClick={() => updatePreference('selectedModelId', model.id)}
-                          className={cn(
-                            "p-4 rounded-xl border-2 text-left transition-all group relative",
-                            preferences.selectedModelId === model.id 
-                              ? "border-orange-500 bg-orange-50/50 shadow-sm" 
-                              : "border-stone-100 hover:border-stone-200 bg-stone-50/30"
-                          )}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-bold text-sm text-stone-900">{model.name}</span>
-                            <span className={cn(
-                              "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase",
-                              model.provider === 'google' ? "bg-blue-100 text-blue-600" :
-                              model.provider === 'openai' ? "bg-green-100 text-green-600" :
-                              "bg-purple-100 text-purple-600"
-                            )}>
-                              {model.provider}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-stone-500 leading-snug mb-2">{model.description}</p>
-                          <div className="flex items-center gap-2">
-                            {(model.id.includes('mini') || model.id.includes('haiku') || model.id.includes('flash')) && (
-                              <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
-                                Tiết kiệm
-                              </span>
+                      {AVAILABLE_MODELS.map(model => {
+                        const status = apiStatus[model.id];
+                        const isQuotaExceeded = status?.status === 'error' && (status.message?.includes('429') || status.message?.toLowerCase().includes('quota'));
+                        const isError = status?.status === 'error';
+
+                        return (
+                          <button
+                            key={model.id}
+                            onClick={() => updatePreference('selectedModelId', model.id)}
+                            disabled={isQuotaExceeded}
+                            className={cn(
+                              "p-4 rounded-xl border-2 text-left transition-all group relative",
+                              preferences.selectedModelId === model.id 
+                                ? "border-orange-500 bg-orange-50/50 shadow-sm" 
+                                : "border-stone-100 hover:border-stone-200 bg-stone-50/30",
+                              isQuotaExceeded && "opacity-50 cursor-not-allowed grayscale",
+                              isError && !isQuotaExceeded && "border-red-200 bg-red-50/30"
                             )}
-                          </div>
-                          {preferences.selectedModelId === model.id && (
-                            <div className="absolute top-2 right-2">
-                              <div className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-bold text-sm text-stone-900">{model.name}</span>
+                              <div className="flex items-center gap-1">
+                                {isQuotaExceeded && (
+                                  <span className="text-[7px] px-1 py-0.5 rounded bg-red-100 text-red-600 font-bold uppercase">
+                                    Hết hạn mức
+                                  </span>
+                                )}
+                                <span className={cn(
+                                  "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase",
+                                  model.provider === 'google' ? "bg-blue-100 text-blue-600" :
+                                  model.provider === 'openai' ? "bg-green-100 text-green-600" :
+                                  "bg-purple-100 text-purple-600"
+                                )}>
+                                  {model.provider}
+                                </span>
+                              </div>
                             </div>
-                          )}
-                        </button>
-                      ))}
+                            <p className="text-[10px] text-stone-500 leading-snug mb-2">{model.description}</p>
+                            <div className="flex items-center gap-2">
+                              {(model.id.includes('mini') || model.id.includes('haiku') || model.id.includes('flash')) && (
+                                <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
+                                  Tiết kiệm
+                                </span>
+                              )}
+                              {isError && !isQuotaExceeded && (
+                                <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-600">
+                                  Lỗi kết nối
+                                </span>
+                              )}
+                            </div>
+                            {preferences.selectedModelId === model.id && (
+                              <div className="absolute top-2 right-2">
+                                <div className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-4">
@@ -1680,6 +1717,32 @@ export function ChefChat() {
                   ))}
                 </motion.div>
               </div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {apiStatus[preferences.selectedModelId]?.status === 'error' && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="bg-red-50 border border-red-100 p-2 rounded-xl flex items-center justify-between mb-2 overflow-hidden"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <span className="text-[10px] font-medium text-red-700">
+                    {apiStatus[preferences.selectedModelId].message?.includes('429') || apiStatus[preferences.selectedModelId].message?.toLowerCase().includes('quota')
+                      ? "Model này hiện đã hết hạn mức sử dụng." 
+                      : "Model này đang gặp lỗi kết nối."}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => updatePreference('selectedModelId', 'gemini-3-flash')}
+                  className="text-[10px] font-bold text-red-600 hover:underline"
+                >
+                  Chuyển sang Gemini (Miễn phí)
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
 
