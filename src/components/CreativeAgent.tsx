@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LocalDb } from '../lib/localDb';
-import { chatWithCreativeAgent, ChatMessage } from '../lib/gemini';
+import { creativeAgentInstruction, ChatMessage } from '../lib/gemini';
+import { chatWithAIWithFallback } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Palette, Sparkles, User, Loader2, Paperclip, X, Image as ImageIcon, Layout, Camera, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -14,7 +15,7 @@ interface ChatMessageData {
   suggestions?: { label: string; action: string }[];
 }
 
-export function CreativeAgent() {
+export function CreativeAgent({ preferences, setActiveTab }: { preferences: any, setActiveTab: (tab: any) => void }) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -64,29 +65,86 @@ export function CreativeAgent() {
     await LocalDb.addDoc('creative_chats', userMsg);
 
     try {
-      const chatHistory: ChatMessage[] = messages.concat(userMsg).map(m => ({
+      const history = messages.concat(userMsg).map(m => ({
         role: m.sender === 'user' ? 'user' : 'model',
         parts: [{ text: m.text }]
       }));
 
-      const response = await chatWithCreativeAgent(chatHistory);
+      // Define fallback chain
+      const fallbacks = [
+        'gemini-flash-latest',
+        'openrouter/deepseek/deepseek-chat',
+        'groq/llama-3.3-70b-versatile'
+      ].filter(id => id !== preferences.selectedModelId);
+
+      const aiResult = await chatWithAIWithFallback(
+        preferences.selectedModelId, 
+        history, 
+        creativeAgentInstruction,
+        undefined,
+        { 
+          openaiKey: preferences.openaiKey, 
+          anthropicKey: preferences.anthropicKey, 
+          googleKey: preferences.googleKey,
+          openrouterKey: preferences.openrouterKey,
+          nvidiaKey: preferences.nvidiaKey,
+          groqKey: preferences.groqKey
+        },
+        fallbacks
+      );
       
       const aiMsg: ChatMessageData = {
         id: (Date.now() + 1).toString(),
-        text: response.text || 'Xin lỗi, tôi gặp chút trục trặc. Bạn thử lại nhé!',
+        text: aiResult.text || 'Xin lỗi, tôi gặp chút trục trặc. Bạn thử lại nhé!',
         sender: 'ai',
         timestamp: new Date().toISOString(),
-        suggestions: response.suggestions
+        suggestions: aiResult.suggestions
       };
 
       setMessages(prev => [...prev, aiMsg]);
       await LocalDb.addDoc('creative_chats', aiMsg);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Creative Agent Error:", error);
+      const errorStr = String(error).toLowerCase();
+      let errorMessage = 'Xin lỗi, tôi gặp chút trục trặc. Bạn thử lại nhé!';
+      
+      if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
+        errorMessage = '⚠️ **Hết hạn mức (Quota Limit):** GemAgent hiện đã hết lượt sử dụng. Bạn có thể thử lại sau hoặc chuyển sang **Chef Chat** để dùng các model khác.';
+      }
+
+      const aiMsg: ChatMessageData = {
+        id: (Date.now() + 1).toString(),
+        text: errorMessage,
+        sender: 'ai',
+        timestamp: new Date().toISOString(),
+        suggestions: [
+          { label: '🔄 Thử lại', action: 'retry' },
+          { label: '💬 Sang Chef Chat', action: 'go_to_chat' }
+        ]
+      };
+      setMessages(prev => [...prev, aiMsg]);
+      await LocalDb.addDoc('creative_chats', aiMsg);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  const handleSuggestionClick = (suggestion: { label: string; action: string }) => {
+    if (suggestion.action === 'go_to_chat') {
+      setActiveTab('chat');
+      return;
+    }
+    if (suggestion.action === 'retry') {
+      const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
+      if (lastUserMsg) {
+        handleSend(lastUserMsg.text);
+      }
+      return;
+    }
+    handleSend(suggestion.label);
+  };
+
+  const isActuallyTyping = isProcessing;
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] bg-stone-50">
@@ -115,33 +173,41 @@ export function CreativeAgent() {
                 <ReactMarkdown>{msg.text}</ReactMarkdown>
               </div>
             </div>
-            
-            {msg.suggestions && msg.suggestions.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {msg.suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(s.label)}
-                    className="bg-white border border-purple-100 text-purple-600 px-3 py-1.5 rounded-full text-[10px] font-bold hover:bg-purple-50 transition-colors shadow-sm"
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         ))}
-        {isProcessing && (
-          <div className="flex items-start gap-3">
-            <div className="bg-white border border-stone-100 p-4 rounded-2xl rounded-tl-none shadow-sm">
-              <Loader2 className="w-5 h-5 text-purple-600 animate-spin" />
+        {isActuallyTyping && (
+          <div className="flex items-start gap-3 mr-auto">
+            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+              <Palette className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="bg-white border border-stone-100 p-4 rounded-2xl rounded-tl-none shadow-sm flex gap-1">
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 bg-white border-t border-stone-100">
+      <div className="p-4 bg-white border-t border-stone-100 space-y-3">
+        {messages.length > 0 && messages[messages.length - 1].sender === 'ai' && messages[messages.length - 1].suggestions && (
+          <div className="flex flex-wrap gap-2 mb-1">
+            {messages[messages.length - 1].suggestions?.map((s, i) => (
+              <motion.button
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+                onClick={() => handleSuggestionClick(s)}
+                className="bg-purple-50 border border-purple-100 text-purple-700 px-3 py-1.5 rounded-full text-[10px] font-bold hover:bg-purple-100 transition-all shadow-sm flex items-center gap-1.5 group"
+              >
+                <Sparkles className="w-3 h-3 text-purple-400 group-hover:rotate-12 transition-transform" />
+                {s.label}
+              </motion.button>
+            ))}
+          </div>
+        )}
         <div className="relative flex items-center gap-2">
           <input
             type="text"

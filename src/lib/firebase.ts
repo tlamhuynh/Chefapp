@@ -3,7 +3,11 @@ import { LocalDb, localAuth, mockUser } from './localDb';
 // Mocking Firebase SDK with Local Storage
 export const auth = localAuth;
 export const db = {} as any; // Not used directly anymore
-export const googleProvider = {} as any;
+export const googleProvider = {
+  addScope: (scope: string) => {
+    console.log(`Mock: Added scope ${scope}`);
+  }
+} as any;
 
 export enum OperationType {
   CREATE = 'create',
@@ -145,7 +149,10 @@ export const Timestamp = {
 };
 
 export const getDocFromServer = getDoc;
-export const signInWithPopup = async (auth: any, provider: any) => ({ user: mockUser });
+export const signInWithPopup = async (auth: any, provider: any) => ({ 
+  user: mockUser,
+  _credential: { accessToken: "mock-google-token" }
+});
 export const signOut = async (auth: any) => localAuth.signOut();
 export const onAuthStateChanged = (auth: any, callback: any) => localAuth.onAuthStateChanged(callback);
 

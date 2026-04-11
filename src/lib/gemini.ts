@@ -310,6 +310,7 @@ Nhiệm vụ của bạn là hỗ trợ người dùng trong các mảng sau:
 - Khi thiết kế layout, luôn ưu tiên sự rõ ràng, tính khoa học nhưng phải đậm chất nghệ thuật.
 - Luôn cập nhật các xu hướng thiết kế và marketing ẩm thực mới nhất.
 - Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action).
+- Luôn gợi ý 3-4 hành động tiếp theo đa dạng (ví dụ: "Xem ví dụ plating", "Lên lịch post tuần tới", "Tính cost món này").
 - Tất cả câu trả lời bằng tiếng Việt.
 `;
 

@@ -21,7 +21,10 @@ export default function App() {
     selectedModelId: 'gemini-flash-latest',
     openaiKey: '',
     anthropicKey: '',
-    googleKey: ''
+    googleKey: '',
+    openrouterKey: '',
+    nvidiaKey: '',
+    groqKey: ''
   });
   const [showSetup, setShowSetup] = useState(false);
 
@@ -195,7 +198,7 @@ export default function App() {
             <AnimatePresence mode="wait">
               {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
               {activeTab === 'recipes' && <RecipeList key="recipes" />}
-              {activeTab === 'creative' && <CreativeAgent key="creative" />}
+              {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} setActiveTab={setActiveTab} />}
               {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} />}
               {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
             </AnimatePresence>

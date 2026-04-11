@@ -68,6 +68,18 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Anthropic API Key' } }));
         continue;
       }
+      if (model.provider === 'openrouter' && !preferences.openrouterKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenRouter API Key' } }));
+        continue;
+      }
+      if (model.provider === 'nvidia' && !preferences.nvidiaKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu NVIDIA API Key' } }));
+        continue;
+      }
+      if (model.provider === 'groq' && !preferences.groqKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Groq API Key' } }));
+        continue;
+      }
 
       try {
         const result = await chatWithAI(
@@ -75,7 +87,14 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
           [{ role: 'user', parts: [{ text: 'Hi' }] }], 
           "Chỉ trả về JSON rỗng {}",
           undefined,
-          { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey, googleKey: preferences.googleKey }
+          { 
+            openaiKey: preferences.openaiKey, 
+            anthropicKey: preferences.anthropicKey, 
+            googleKey: preferences.googleKey,
+            openrouterKey: preferences.openrouterKey,
+            nvidiaKey: preferences.nvidiaKey,
+            groqKey: preferences.groqKey
+          }
         );
         if (result) {
           setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
@@ -291,7 +310,12 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                               <span className="font-bold text-xs text-stone-900">{model.name}</span>
                               <span className={cn(
                                 "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase",
-                                model.provider === 'google' ? "bg-blue-100 text-blue-600" : "bg-green-100 text-green-600"
+                                model.provider === 'google' ? "bg-blue-100 text-blue-600" : 
+                                model.provider === 'openai' ? "bg-green-100 text-green-600" :
+                                model.provider === 'openrouter' ? "bg-purple-100 text-purple-600" :
+                                model.provider === 'nvidia' ? "bg-emerald-100 text-emerald-600" :
+                                model.provider === 'groq' ? "bg-orange-100 text-orange-600" :
+                                "bg-stone-100 text-stone-600"
                               )}>
                                 {model.provider}
                               </span>
@@ -319,6 +343,36 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                             value={preferences.openaiKey || ''}
                             onChange={(e) => updatePreference('openaiKey', e.target.value)}
                             placeholder="sk-..."
+                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">OpenRouter API Key (Free Models)</label>
+                          <input
+                            type="password"
+                            value={preferences.openrouterKey || ''}
+                            onChange={(e) => updatePreference('openrouterKey', e.target.value)}
+                            placeholder="sk-or-..."
+                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">NVIDIA API Key (Free Models)</label>
+                          <input
+                            type="password"
+                            value={preferences.nvidiaKey || ''}
+                            onChange={(e) => updatePreference('nvidiaKey', e.target.value)}
+                            placeholder="nvapi-..."
+                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Groq API Key</label>
+                          <input
+                            type="password"
+                            value={preferences.groqKey || ''}
+                            onChange={(e) => updatePreference('groqKey', e.target.value)}
+                            placeholder="gsk_..."
                             className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                           />
                         </div>

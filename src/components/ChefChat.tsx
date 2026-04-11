@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
 import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool } from '../lib/gemini';
-import { chatWithAI, AVAILABLE_MODELS, AIModel } from '../lib/ai';
+import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -400,12 +400,27 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
           }
         } else {
           const { systemInstruction } = await import('../lib/gemini');
-          aiResult = await chatWithAI(
+          // Define fallback chain: Primary -> Gemini Flash -> DeepSeek (OR) -> Llama (Groq)
+          const fallbacks = [
+            'gemini-flash-latest',
+            'openrouter/deepseek/deepseek-chat',
+            'groq/llama-3.3-70b-versatile'
+          ].filter(id => id !== preferences.selectedModelId);
+
+          aiResult = await chatWithAIWithFallback(
             preferences.selectedModelId, 
             history, 
             systemInstruction,
             undefined,
-            { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey, googleKey: preferences.googleKey }
+            { 
+              openaiKey: preferences.openaiKey, 
+              anthropicKey: preferences.anthropicKey, 
+              googleKey: preferences.googleKey,
+              openrouterKey: preferences.openrouterKey,
+              nvidiaKey: preferences.nvidiaKey,
+              groqKey: preferences.groqKey
+            },
+            fallbacks
           );
         }
 
@@ -421,7 +436,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
         }
 
         await addDoc(collection(db, 'chats'), {
-          text: aiResult.text || "Xin lỗi, tôi gặp chút trục trặc khi xử lý yêu cầu này.",
+          text: aiResult.text || "Xin lỗi, tôi gặp chút trục trặc khi xử lý yêu cầu này (Không có phản hồi từ AI). Vui lòng thử lại hoặc đổi mô hình.",
           suggestions: finalSuggestions,
           recipe: aiResult.recipe || null,
           photos: aiResult.photos || null,
@@ -446,12 +461,13 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
         const errorStr = String(aiError).toLowerCase();
         
         if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
-          errorMessage = "⚠️ **Hết hạn mức (Quota Limit):** Mô hình AI này hiện đã hết lượt sử dụng hoặc vượt quá giới hạn tốc độ. \n\n**Lời khuyên:** Bạn có thể chuyển sang **Gemini Flash** (Mặc định & Miễn phí) để tiếp tục mà không bị gián đoạn.";
+          errorMessage = "⚠️ **Hết hạn mức (Quota Limit):** Mô hình AI này hiện đã hết lượt sử dụng hoặc vượt quá giới hạn tốc độ. \n\n**Lời khuyên:** Bạn có thể chuyển sang **Gemini Flash** (Miễn phí) hoặc các model từ **OpenRouter/NVIDIA** để tiếp tục.";
           
           const suggestions = [
             { label: "🔄 Thử lại", action: "retry" },
-            { label: "✨ Chuyển sang Gemini (Miễn phí)", action: "switch_to_gemini" },
-            { label: "⚙️ Cài đặt", action: "open_settings" }
+            { label: "✨ Chuyển sang Gemini Flash (Free)", action: "switch_to_gemini" },
+            { label: "🚀 Dùng DeepSeek (OpenRouter)", action: "switch_to_deepseek" },
+            { label: "⚙️ Cài đặt API", action: "open_settings" }
           ];
 
           await addDoc(collection(db, 'chats'), {
@@ -576,6 +592,14 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     if (suggestion.action === 'switch_to_gemini') {
       updatePreference('selectedModelId', 'gemini-flash-latest');
       // After switching, trigger a retry automatically
+      const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
+      if (lastUserMsg) {
+        handleSend(lastUserMsg.text);
+      }
+      return;
+    }
+    if (suggestion.action === 'switch_to_deepseek') {
+      updatePreference('selectedModelId', 'openrouter/deepseek/deepseek-chat');
       const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
       if (lastUserMsg) {
         handleSend(lastUserMsg.text);
@@ -982,7 +1006,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
               <div className={cn(
                 "p-4 rounded-2xl text-sm leading-relaxed shadow-sm transition-all",
                 msg.sender === 'user' 
-                  ? cn(preferences.chatUserBubbleColor, "text-white rounded-tr-none") 
+                  ? cn(preferences.chatUserBubbleColor, "text-white rounded-tr-none", (msg.status === 'pending' || msg.status === 'processing') && "animate-pulse opacity-80") 
                   : cn(preferences.chatAiBubbleColor, "border border-stone-100 text-stone-800 rounded-tl-none")
               )}>
                 {msg.hasFiles && msg.files && (
@@ -1016,6 +1040,13 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                 <div className="markdown-body">
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
+
+                {msg.sender === 'user' && (msg.status === 'pending' || msg.status === 'processing') && (
+                  <div className="flex items-center gap-1.5 mt-2 text-[10px] text-white/60 font-medium italic">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Bếp trưởng đang xem xét...</span>
+                  </div>
+                )}
 
                 {msg.recipe && (
                   <RecipeCard 
