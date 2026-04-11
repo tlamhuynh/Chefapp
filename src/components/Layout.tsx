@@ -19,7 +19,7 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col">
+    <div className="min-h-screen bg-stone-50 flex flex-col pt-[env(safe-area-inset-top)]">
       <main className="flex-1 w-full max-w-lg mx-auto relative pb-24 md:pb-8 md:pt-6">
         <div className="px-4 sm:px-6">
           {children}

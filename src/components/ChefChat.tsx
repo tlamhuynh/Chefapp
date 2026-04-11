@@ -147,35 +147,25 @@ interface ConversationData {
   createdAt: any;
 }
 
-export function ChefChat() {
+interface ChefChatProps {
+  preferences: any;
+  updatePreference: (key: string, value: string) => void;
+}
+
+export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
-  const [preferences, setPreferences] = useState({
-    chatUserBubbleColor: 'bg-stone-900',
-    chatAiBubbleColor: 'bg-white',
-    chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-flash-latest',
-    openaiKey: '',
-    anthropicKey: '',
-    googleKey: ''
-  });
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isRecipeCrawActive, setIsRecipeCrawActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isClearingHistory, setIsClearingHistory] = useState(false);
-  const [confirmClearHistory, setConfirmClearHistory] = useState(false);
-  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'style' | 'model' | 'status' | 'system'>('style');
-  const [apiStatus, setApiStatus] = useState<Record<string, { status: 'checking' | 'ok' | 'error', message?: string }>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -183,39 +173,6 @@ export function ChefChat() {
 
   useEffect(() => {
     if (!auth.currentUser) return;
-
-    // Load user preferences
-    const loadPrefs = async () => {
-      try {
-        const userRef = doc(db, 'users', auth.currentUser!.uid);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-          if (userDoc.data().preferences) {
-            const savedPrefs = userDoc.data().preferences;
-            // Validate model ID to handle migration from old IDs
-            if (!AVAILABLE_MODELS.some(m => m.id === savedPrefs.selectedModelId)) {
-              savedPrefs.selectedModelId = 'gemini-flash-latest';
-            }
-            setPreferences(prev => ({ ...prev, ...savedPrefs }));
-          }
-        } else {
-          // Create initial user document
-          await setDoc(userRef, {
-            uid: auth.currentUser!.uid,
-            email: auth.currentUser!.email,
-            displayName: auth.currentUser!.displayName,
-            photoURL: auth.currentUser!.photoURL,
-            role: 'chef',
-            preferences: preferences,
-            createdAt: serverTimestamp()
-          });
-        }
-      } catch (error) {
-        console.error("Failed to load or create user preferences", error);
-      }
-    };
-    loadPrefs();
 
     // Listen for conversations
     const convQ = query(
@@ -291,84 +248,6 @@ export function ChefChat() {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'conversations');
-    }
-  };
-
-  const clearChatHistory = async () => {
-    if (!auth.currentUser) return;
-    setIsClearingHistory(true);
-    try {
-      const chatQ = query(
-        collection(db, 'chats'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const chatSnapshot = await getDocs(chatQ);
-      const chatDeletePromises = chatSnapshot.docs.map(doc => deleteDoc(doc.ref));
-      
-      await Promise.all(chatDeletePromises);
-      
-      setMessages([]);
-      setConfirmClearHistory(false);
-      setShowSettings(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'chats');
-    } finally {
-      setIsClearingHistory(false);
-    }
-  };
-
-  const clearAllData = async () => {
-    if (!auth.currentUser) return;
-
-    setIsClearingHistory(true);
-    try {
-      // Clear chats
-      const chatQ = query(
-        collection(db, 'chats'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const chatSnapshot = await getDocs(chatQ);
-      const chatDeletePromises = chatSnapshot.docs.map(doc => deleteDoc(doc.ref));
-      
-      // Clear recipes
-      const recipeQ = query(
-        collection(db, 'recipes'),
-        where('authorId', '==', auth.currentUser.uid)
-      );
-      const recipeSnapshot = await getDocs(recipeQ);
-      const recipeDeletePromises = recipeSnapshot.docs.map(doc => deleteDoc(doc.ref));
-      
-      await Promise.all([...chatDeletePromises, ...recipeDeletePromises]);
-      
-      // Reset preferences to defaults
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        preferences: {
-          chatUserBubbleColor: 'bg-stone-900',
-          chatAiBubbleColor: 'bg-white',
-          chatBackground: 'bg-stone-50',
-          selectedModelId: 'gemini-flash-latest',
-          openaiKey: '',
-          anthropicKey: '',
-          googleKey: ''
-        }
-      });
-      
-      setMessages([]);
-      setPreferences({
-        chatUserBubbleColor: 'bg-stone-900',
-        chatAiBubbleColor: 'bg-white',
-        chatBackground: 'bg-stone-50',
-        selectedModelId: 'gemini-flash-latest',
-        openaiKey: '',
-        anthropicKey: '',
-        googleKey: ''
-      });
-      setConfirmClearAll(false);
-      setShowSettings(false);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'chats');
-    } finally {
-      setIsClearingHistory(false);
     }
   };
 
@@ -633,18 +512,7 @@ export function ChefChat() {
     if ((!textToSend.trim() && selectedFiles.length === 0) || !auth.currentUser) return;
 
     // Prevent sending if selected model is in error state
-    if (apiStatus[preferences.selectedModelId]?.status === 'error') {
-      const isQuota = apiStatus[preferences.selectedModelId].message?.includes('429') || apiStatus[preferences.selectedModelId].message?.toLowerCase().includes('quota');
-      if (isQuota) {
-        // Auto-switch to gemini if quota exceeded and user tries to send
-        updatePreference('selectedModelId', 'gemini-3-flash');
-        // Continue with Gemini
-      } else {
-        setShowSettings(true);
-        setActiveSettingsTab('status');
-        return;
-      }
-    }
+    // (Removed apiStatus check from chat, handled in Profile)
 
     let convId = activeConversationId;
     
@@ -695,7 +563,7 @@ export function ChefChat() {
 
   const handleSuggestionClick = (suggestion: {label: string, action: string}) => {
     if (suggestion.action === 'open_settings') {
-      setShowSettings(true);
+      // Inform user settings moved to Profile
       return;
     }
     if (suggestion.action === 'retry') {
@@ -723,75 +591,6 @@ export function ChefChat() {
     }
     handleSend(suggestion.label);
   };
-
-  const updatePreference = async (key: string, value: string) => {
-    if (!auth.currentUser) return;
-    const newPrefs = { ...preferences, [key]: value };
-    setPreferences(newPrefs);
-    try {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        preferences: newPrefs
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${auth.currentUser.uid}`);
-    }
-  };
-
-  const checkApiStatus = async () => {
-    const statuses: Record<string, { status: 'checking' | 'ok' | 'error', message?: string }> = {};
-    AVAILABLE_MODELS.forEach(m => statuses[m.id] = { status: 'checking' });
-    setApiStatus(statuses);
-
-    const { systemInstruction } = await import('../lib/gemini');
-
-    for (const model of AVAILABLE_MODELS) {
-      // Skip models that don't have keys provided
-      if (model.provider === 'openai' && !preferences.openaiKey) {
-        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenAI API Key' } }));
-        continue;
-      }
-      if (model.provider === 'anthropic' && !preferences.anthropicKey) {
-        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Anthropic API Key' } }));
-        continue;
-      }
-
-      try {
-        // Simple ping test - use a very short prompt
-        const result = await chatWithAI(
-          model.id, 
-          [{ role: 'user', parts: [{ text: 'Hi' }] }], 
-          "Chỉ trả về JSON rỗng {}",
-          undefined,
-          { openaiKey: preferences.openaiKey, anthropicKey: preferences.anthropicKey, googleKey: preferences.googleKey }
-        );
-        if (result) {
-          setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
-        } else {
-          throw new Error("Không có phản hồi");
-        }
-      } catch (error: any) {
-        console.error(`API check failed for ${model.id}:`, error);
-        const errorStr = String(error).toLowerCase();
-        let msg = error.message || "Lỗi không xác định";
-        
-        if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
-          // Ignore quota errors as requested by user
-          setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
-          continue;
-        } else if (errorStr.includes('api_key') || errorStr.includes('invalid_api_key')) {
-          msg = "API Key không hợp lệ. Vui lòng kiểm tra lại.";
-        }
-        
-        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: msg } }));
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (showSettings && activeSettingsTab === 'status' && Object.keys(apiStatus).length === 0) {
-      checkApiStatus();
-    }
-  }, [showSettings, activeSettingsTab]);
 
   const saveRecipeFromChat = async (msg: ChatMessageData) => {
     if (!auth.currentUser) return;
@@ -947,10 +746,9 @@ export function ChefChat() {
               {googleToken && <span className="hidden lg:inline">Google</span>}
             </button>
             <button 
-              onClick={() => setShowSettings(!showSettings)}
+              onClick={() => {}} // Settings moved to Profile
               className={cn(
-                "p-2 rounded-lg transition-colors",
-                showSettings ? "bg-orange-100 text-orange-600" : "hover:bg-stone-100 text-stone-500"
+                "p-2 rounded-lg transition-colors hover:bg-stone-100 text-stone-500"
               )}
             >
               <Settings className="w-5 h-5" />
@@ -1045,383 +843,7 @@ export function ChefChat() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="bg-white border-b border-stone-200 overflow-hidden shadow-lg z-20"
-          >
-            <div className="max-h-[70vh] overflow-y-auto">
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-bold text-stone-900 flex items-center gap-2">
-                    <Settings className="w-4 h-4 text-orange-500" />
-                    Cài đặt hệ thống
-                  </h2>
-                  <button onClick={() => setShowSettings(false)} className="text-stone-400 hover:text-stone-600 p-1">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="flex p-1 bg-stone-100 rounded-xl">
-                  <button 
-                    onClick={() => setActiveSettingsTab('style')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg",
-                      activeSettingsTab === 'style' ? "bg-white text-orange-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
-                    )}
-                  >
-                    Giao diện
-                  </button>
-                  <button 
-                    onClick={() => setActiveSettingsTab('model')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg",
-                      activeSettingsTab === 'model' ? "bg-white text-orange-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
-                    )}
-                  >
-                    Mô hình AI
-                  </button>
-                  <button 
-                    onClick={() => setActiveSettingsTab('status')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg",
-                      activeSettingsTab === 'status' ? "bg-white text-orange-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
-                    )}
-                  >
-                    Trạng thái API
-                  </button>
-                  <button 
-                    onClick={() => setActiveSettingsTab('system')}
-                    className={cn(
-                      "flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg",
-                      activeSettingsTab === 'system' ? "bg-white text-orange-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
-                    )}
-                  >
-                    Hệ thống
-                  </button>
-                </div>
-
-                {activeSettingsTab === 'style' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-top-2">
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Màu tin nhắn của bạn</label>
-                      <div className="flex flex-wrap gap-2">
-                        {colorOptions.user.map(color => (
-                          <button
-                            key={color.class}
-                            onClick={() => updatePreference('chatUserBubbleColor', color.class)}
-                            className={cn(
-                              "w-8 h-8 rounded-full border-2 transition-all",
-                              color.class,
-                              preferences.chatUserBubbleColor === color.class ? "border-orange-500 scale-110" : "border-transparent"
-                            )}
-                            title={color.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Màu tin nhắn AI</label>
-                      <div className="flex flex-wrap gap-2">
-                        {colorOptions.ai.map(color => (
-                          <button
-                            key={color.class}
-                            onClick={() => updatePreference('chatAiBubbleColor', color.class)}
-                            className={cn(
-                              "w-8 h-8 rounded-full border-2 transition-all",
-                              color.class,
-                              preferences.chatAiBubbleColor === color.class ? "border-orange-500 scale-110" : "border-transparent"
-                            )}
-                            title={color.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Màu nền chat</label>
-                      <div className="flex flex-wrap gap-2">
-                        {colorOptions.bg.map(color => (
-                          <button
-                            key={color.class}
-                            onClick={() => updatePreference('chatBackground', color.class)}
-                            className={cn(
-                              "w-8 h-8 rounded-full border-2 transition-all",
-                              color.class,
-                              preferences.chatBackground === color.class ? "border-orange-500 scale-110" : "border-transparent"
-                            )}
-                            title={color.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === 'model' && (
-                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Chọn Mô hình AI</label>
-                      <span className="text-[10px] text-stone-400 italic">Mô hình Google hỗ trợ RecipeCraw tốt nhất</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {AVAILABLE_MODELS.map(model => {
-                        const status = apiStatus[model.id];
-                        const isQuotaExceeded = status?.status === 'error' && (status.message?.includes('429') || status.message?.toLowerCase().includes('quota'));
-                        const isError = status?.status === 'error';
-
-                        return (
-                          <button
-                            key={model.id}
-                            onClick={() => updatePreference('selectedModelId', model.id)}
-                            disabled={isQuotaExceeded}
-                            className={cn(
-                              "p-4 rounded-xl border-2 text-left transition-all group relative",
-                              preferences.selectedModelId === model.id 
-                                ? "border-orange-500 bg-orange-50/50 shadow-sm" 
-                                : "border-stone-100 hover:border-stone-200 bg-stone-50/30",
-                              isQuotaExceeded && "opacity-50 cursor-not-allowed grayscale",
-                              isError && !isQuotaExceeded && "border-red-200 bg-red-50/30"
-                            )}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-bold text-sm text-stone-900">{model.name}</span>
-                              <div className="flex items-center gap-1">
-                                {isQuotaExceeded && (
-                                  <span className="text-[7px] px-1 py-0.5 rounded bg-red-100 text-red-600 font-bold uppercase">
-                                    Hết hạn mức
-                                  </span>
-                                )}
-                                <span className={cn(
-                                  "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase",
-                                  model.provider === 'google' ? "bg-blue-100 text-blue-600" :
-                                  model.provider === 'openai' ? "bg-green-100 text-green-600" :
-                                  "bg-purple-100 text-purple-600"
-                                )}>
-                                  {model.provider}
-                                </span>
-                              </div>
-                            </div>
-                            <p className="text-[10px] text-stone-500 leading-snug mb-2">{model.description}</p>
-                            <div className="flex items-center gap-2">
-                              {(model.id.includes('mini') || model.id.includes('haiku') || model.id.includes('flash')) && (
-                                <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">
-                                  Tiết kiệm
-                                </span>
-                              )}
-                              {isError && !isQuotaExceeded && (
-                                <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-600">
-                                  Lỗi kết nối
-                                </span>
-                              )}
-                            </div>
-                            {preferences.selectedModelId === model.id && (
-                              <div className="absolute top-2 right-2">
-                                <div className="w-1.5 h-1.5 bg-orange-500 rounded-full" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="p-4 bg-stone-50 rounded-2xl border border-stone-100 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Cấu hình API Keys</label>
-                        <span className="text-[10px] text-stone-400 italic">Keys được lưu bảo mật trong hồ sơ của bạn</span>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-                          <label className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-                            Google API Key
-                          </label>
-                          <input
-                            type="password"
-                            value={preferences.googleKey || ''}
-                            onChange={(e) => updatePreference('googleKey', e.target.value)}
-                            placeholder="AIza..."
-                            className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-stone-600">OpenAI API Key</label>
-                          <input
-                            type="password"
-                            value={preferences.openaiKey || ''}
-                            onChange={(e) => updatePreference('openaiKey', e.target.value)}
-                            placeholder="sk-..."
-                            className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-stone-600">Anthropic API Key</label>
-                          <input
-                            type="password"
-                            value={preferences.anthropicKey || ''}
-                            onChange={(e) => updatePreference('anthropicKey', e.target.value)}
-                            placeholder="sk-ant-..."
-                            className="w-full px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
-                      </div>
-                      
-                      <button
-                        onClick={checkApiStatus}
-                        className="w-full py-2 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Loader2 className={cn("w-4 h-4", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
-                        Lưu & Kiểm tra trạng thái
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === 'status' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Trạng thái kết nối</label>
-                        <button 
-                          onClick={checkApiStatus}
-                          className="text-[10px] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
-                        >
-                          <Loader2 className={cn("w-3 h-3", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
-                          Kiểm tra lại
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {AVAILABLE_MODELS.map(model => (
-                          <div key={model.id} className="flex flex-col gap-2 p-3 bg-stone-50 rounded-xl border border-stone-100">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className={cn(
-                                  "w-2 h-2 rounded-full",
-                                  apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
-                                  apiStatus[model.id]?.status === 'error' ? "bg-red-500" :
-                                  "bg-stone-300 animate-pulse"
-                                )} />
-                                <span className="text-sm font-medium text-stone-700">{model.name}</span>
-                              </div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider">
-                                {apiStatus[model.id]?.status === 'ok' && <span className="text-green-600">Hoạt động</span>}
-                                {apiStatus[model.id]?.status === 'error' && (
-                                  <span className="text-red-600">Lỗi kết nối</span>
-                                )}
-                                {apiStatus[model.id]?.status === 'checking' && <span className="text-stone-400">Đang kiểm tra...</span>}
-                              </div>
-                            </div>
-                            {apiStatus[model.id]?.status === 'error' && (
-                              <div className="flex flex-col gap-2">
-                                <p className="text-[10px] text-red-500 leading-relaxed italic">
-                                  {apiStatus[model.id]?.message}
-                                </p>
-                                {(apiStatus[model.id]?.message?.includes('Quota') || apiStatus[model.id]?.message?.includes('Key')) && model.id !== 'gemini-flash-latest' && (
-                                  <button
-                                    onClick={() => {
-                                      updatePreference('selectedModelId', 'gemini-flash-latest');
-                                      setShowSettings(false);
-                                    }}
-                                    className="w-fit text-[9px] font-bold uppercase tracking-widest text-orange-600 hover:text-orange-700 flex items-center gap-1"
-                                  >
-                                    <Sparkles className="w-3 h-3" />
-                                    Chuyển sang Gemini (Miễn phí)
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSettingsTab === 'system' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Clear Chat History */}
-                      <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 space-y-4">
-                        <div className="flex items-center gap-3 text-orange-600">
-                          <MessageSquare className="w-5 h-5" />
-                          <h3 className="text-sm font-bold">Lịch sử trò chuyện</h3>
-                        </div>
-                        <p className="text-[10px] text-orange-700/70 leading-relaxed">
-                          Chỉ xóa các tin nhắn trong cuộc hội thoại hiện tại. Các công thức đã lưu sẽ được giữ lại.
-                        </p>
-                        {!confirmClearHistory ? (
-                          <button
-                            onClick={() => setConfirmClearHistory(true)}
-                            className="w-full py-2 bg-white text-orange-600 border border-orange-200 hover:bg-orange-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
-                          >
-                            Xóa lịch sử chat
-                          </button>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={clearChatHistory}
-                              disabled={isClearingHistory}
-                              className="flex-1 py-2 bg-orange-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm"
-                            >
-                              {isClearingHistory ? <Loader2 className="w-3 h-3 animate-spin mx-auto" /> : "Xác nhận xóa"}
-                            </button>
-                            <button
-                              onClick={() => setConfirmClearHistory(false)}
-                              className="px-3 py-2 bg-white text-stone-500 border border-stone-200 rounded-xl text-[10px] font-bold uppercase"
-                            >
-                              Hủy
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Clear All Data */}
-                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100 space-y-4">
-                        <div className="flex items-center gap-3 text-red-600">
-                          <Trash2 className="w-5 h-5" />
-                          <h3 className="text-sm font-bold">Toàn bộ dữ liệu</h3>
-                        </div>
-                        <p className="text-[10px] text-red-700/70 leading-relaxed">
-                          Xóa vĩnh viễn mọi thứ: tin nhắn, công thức đã lưu và cài đặt cá nhân.
-                        </p>
-                        {!confirmClearAll ? (
-                          <button
-                            onClick={() => setConfirmClearAll(true)}
-                            className="w-full py-2 bg-white text-red-600 border border-red-200 hover:bg-red-100 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
-                          >
-                            Xóa tất cả
-                          </button>
-                        ) : (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={clearAllData}
-                              disabled={isClearingHistory}
-                              className="flex-1 py-2 bg-red-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm"
-                            >
-                              {isClearingHistory ? <Loader2 className="w-3 h-3 animate-spin mx-auto" /> : "Xác nhận xóa"}
-                            </button>
-                            <button
-                              onClick={() => setConfirmClearAll(false)}
-                              className="px-3 py-2 bg-white text-stone-500 border border-stone-200 rounded-xl text-[10px] font-bold uppercase"
-                            >
-                              Hủy
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* Settings modal removed and moved to Profile */}
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Sidebar for History */}
@@ -1737,31 +1159,7 @@ export function ChefChat() {
             )}
           </AnimatePresence>
 
-          <AnimatePresence>
-            {apiStatus[preferences.selectedModelId]?.status === 'error' && (
-              <motion.div 
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="bg-red-50 border border-red-100 p-2 rounded-xl flex items-center justify-between mb-2 overflow-hidden"
-              >
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                  <span className="text-[10px] font-medium text-red-700">
-                    {apiStatus[preferences.selectedModelId].message?.includes('429') || apiStatus[preferences.selectedModelId].message?.toLowerCase().includes('quota')
-                      ? "Model này hiện đã hết hạn mức sử dụng." 
-                      : "Model này đang gặp lỗi kết nối."}
-                  </span>
-                </div>
-                <button 
-                  onClick={() => updatePreference('selectedModelId', 'gemini-3-flash')}
-                  className="text-[10px] font-bold text-red-600 hover:underline"
-                >
-                  Chuyển sang Gemini (Miễn phí)
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* API Status check removed from chat */}
 
           <div className="relative flex items-center gap-2">
             <input

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { auth, onAuthStateChanged, User, signInWithPopup, googleProvider, db, doc, getDoc, setDoc, testConnection, handleFirestoreError, OperationType } from './lib/firebase';
+import { auth, onAuthStateChanged, User, signInWithPopup, googleProvider, db, doc, getDoc, setDoc, testConnection, handleFirestoreError, OperationType, updateDoc, serverTimestamp } from './lib/firebase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { RecipeList } from './components/RecipeList';
@@ -7,13 +7,23 @@ import { ChefChat } from './components/ChefChat';
 import { CreativeAgent } from './components/CreativeAgent';
 import { Profile } from './components/Profile';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LogIn, ChefHat } from 'lucide-react';
+import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'recipes' | 'chat' | 'profile' | 'creative'>('dashboard');
+  const [preferences, setPreferences] = useState({
+    chatUserBubbleColor: 'bg-stone-900',
+    chatAiBubbleColor: 'bg-white',
+    chatBackground: 'bg-stone-50',
+    selectedModelId: 'gemini-flash-latest',
+    openaiKey: '',
+    anthropicKey: '',
+    googleKey: ''
+  });
+  const [showSetup, setShowSetup] = useState(false);
 
   useEffect(() => {
     testConnection();
@@ -21,7 +31,6 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          // Check if user exists in Firestore, if not create
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
           if (!userSnap.exists()) {
@@ -30,8 +39,21 @@ export default function App() {
               email: user.email,
               displayName: user.displayName,
               photoURL: user.photoURL,
-              role: 'chef'
+              role: 'chef',
+              preferences: preferences,
+              createdAt: serverTimestamp()
             });
+          } else {
+            const data = userSnap.data();
+            if (data.preferences) {
+              setPreferences(prev => ({ ...prev, ...data.preferences }));
+              // If no google key, show setup
+              if (!data.preferences.googleKey) {
+                setShowSetup(true);
+              }
+            } else {
+              setShowSetup(true);
+            }
           }
           setUser(user);
         } catch (error) {
@@ -44,6 +66,19 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  const updatePreference = async (key: string, value: string) => {
+    if (!user) return;
+    const newPrefs = { ...preferences, [key]: value };
+    setPreferences(newPrefs);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        preferences: newPrefs
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+    }
+  };
 
   const handleLogin = async () => {
     try {
@@ -99,15 +134,73 @@ export default function App() {
           </motion.div>
         </div>
       ) : (
-        <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-          <AnimatePresence mode="wait">
-            {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
-            {activeTab === 'recipes' && <RecipeList key="recipes" />}
-            {activeTab === 'creative' && <CreativeAgent key="creative" />}
-            {activeTab === 'chat' && <ChefChat key="chat" />}
-            {activeTab === 'profile' && <Profile key="profile" user={user} />}
+        <>
+          <AnimatePresence>
+            {showSetup && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] bg-stone-900/80 backdrop-blur-sm flex items-center justify-center p-6"
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-6"
+                >
+                  <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto">
+                    <Key className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h2 className="text-2xl font-bold text-stone-900">Cấu hình API Key</h2>
+                    <p className="text-stone-500 text-sm">Chào mừng Chef! Để bắt đầu sử dụng AI, vui lòng nhập Google Gemini API Key của bạn.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-2">Google Gemini API Key</label>
+                      <input
+                        type="password"
+                        placeholder="AIza..."
+                        value={preferences.googleKey}
+                        onChange={(e) => updatePreference('googleKey', e.target.value)}
+                        className="w-full bg-stone-50 border border-stone-200 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                      />
+                    </div>
+                    <a 
+                      href="https://aistudio.google.com/app/apikey" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-blue-600 hover:underline flex items-center gap-1 justify-center"
+                    >
+                      Lấy API Key miễn phí tại đây <ArrowRight className="w-3 h-3" />
+                    </a>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (preferences.googleKey) setShowSetup(false);
+                    }}
+                    disabled={!preferences.googleKey}
+                    className="w-full bg-stone-900 text-white font-bold py-4 rounded-2xl hover:bg-stone-800 transition-all active:scale-95 disabled:opacity-50 disabled:grayscale"
+                  >
+                    Tiếp tục vào bếp
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
           </AnimatePresence>
-        </Layout>
+
+          <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+            <AnimatePresence mode="wait">
+              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
+              {activeTab === 'recipes' && <RecipeList key="recipes" />}
+              {activeTab === 'creative' && <CreativeAgent key="creative" />}
+              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} />}
+              {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
+            </AnimatePresence>
+          </Layout>
+        </>
       )}
     </ErrorBoundary>
   );
