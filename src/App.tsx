@@ -14,6 +14,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'recipes' | 'chat' | 'profile' | 'creative'>('dashboard');
+  const [pendingChatMessage, setPendingChatMessage] = useState<string | null>(null);
   const [preferences, setPreferences] = useState({
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
@@ -196,10 +197,10 @@ export default function App() {
 
           <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
             <AnimatePresence mode="wait">
-              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
+              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} setPendingChatMessage={setPendingChatMessage} />}
               {activeTab === 'recipes' && <RecipeList key="recipes" />}
               {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} setActiveTab={setActiveTab} />}
-              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} />}
+              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} pendingChatMessage={pendingChatMessage} setPendingChatMessage={setPendingChatMessage} />}
               {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
             </AnimatePresence>
           </Layout>

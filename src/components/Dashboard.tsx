@@ -9,9 +9,10 @@ import { validateRecipe } from '../lib/utils';
 
 interface DashboardProps {
   setActiveTab: (tab: any) => void;
+  setPendingChatMessage?: (message: string | null) => void;
 }
 
-export function Dashboard({ setActiveTab }: DashboardProps) {
+export function Dashboard({ setActiveTab, setPendingChatMessage }: DashboardProps) {
   const [theme, setTheme] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedRecipe, setGeneratedRecipe] = useState<any>(null);
@@ -151,7 +152,12 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           </div>
         </button>
         <button
-          onClick={() => setActiveTab('chat')}
+          onClick={() => {
+            if (setPendingChatMessage) {
+              setPendingChatMessage('Cập nhật cho tôi xu hướng ẩm thực và giá thị trường mới nhất tháng này.');
+            }
+            setActiveTab('chat');
+          }}
           className="glass-card p-6 rounded-3xl hover:bg-white transition-all text-left space-y-4 group active:scale-[0.98]"
         >
           <div className="w-12 h-12 bg-stone-100 rounded-2xl flex items-center justify-center group-hover:bg-stone-900 group-hover:text-white transition-all duration-300">
