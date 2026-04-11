@@ -150,9 +150,12 @@ interface ConversationData {
 interface ChefChatProps {
   preferences: any;
   updatePreference: (key: string, value: string) => void;
+  setActiveTab?: (tab: any) => void;
+  pendingChatMessage?: string | null;
+  setPendingChatMessage?: (message: string | null) => void;
 }
 
-export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
+export function ChefChat({ preferences, updatePreference, setActiveTab, pendingChatMessage, setPendingChatMessage }: ChefChatProps) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -171,6 +174,13 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isProcessingRef = useRef(false);
+
+  useEffect(() => {
+    if (pendingChatMessage && setPendingChatMessage) {
+      handleSend(pendingChatMessage);
+      setPendingChatMessage(null);
+    }
+  }, [pendingChatMessage, setPendingChatMessage]);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -637,7 +647,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
 
   const handleSuggestionClick = (suggestion: {label: string, action: string}) => {
     if (suggestion.action === 'open_settings') {
-      // Inform user settings moved to Profile
+      if (setActiveTab) setActiveTab('profile');
       return;
     }
     if (suggestion.action === 'retry') {

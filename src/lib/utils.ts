@@ -9,7 +9,8 @@ export interface Ingredient {
   name: string;
   amount: string;
   unit: string;
-  price: number;
+  purchasePrice: number;
+  costPerAmount: number;
 }
 
 export interface Recipe {
@@ -36,8 +37,11 @@ export function validateRecipe(recipe: Partial<Recipe>): string | null {
     if (typeof ing.unit !== 'string') {
       return "Đơn vị nguyên liệu phải là chuỗi.";
     }
-    if (typeof ing.price !== 'number' || isNaN(ing.price)) {
-      return "Giá nguyên liệu phải là một số.";
+    if (typeof ing.purchasePrice !== 'number' || isNaN(ing.purchasePrice)) {
+      return "Giá nhập nguyên liệu phải là một số.";
+    }
+    if (typeof ing.costPerAmount !== 'number' || isNaN(ing.costPerAmount)) {
+      return "Cost nguyên liệu phải là một số.";
     }
   }
   if (!recipe.instructions || typeof recipe.instructions !== 'string' || recipe.instructions.trim().length === 0) {
