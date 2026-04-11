@@ -113,7 +113,7 @@ export async function chatWithAI(
       systemInstruction: systemInstruction,
     });
 
-    const response = await modelInstance.generateContent({
+    const result = await modelInstance.generateContent({
       contents: messages.map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: m.parts.map((p: any) => {
@@ -130,10 +130,17 @@ export async function chatWithAI(
       })),
       generationConfig: {
         responseMimeType: "application/json",
-      }
-    });
+      },
+      tools: tools ? [{ functionDeclarations: tools }] : undefined,
+    } as any);
 
-    const text = response.response.text();
+    const response = result.response;
+    
+    if (response.functionCalls && response.functionCalls()) {
+      return { functionCalls: response.functionCalls() };
+    }
+
+    const text = response.text();
     
     try {
       return JSON.parse(text);
@@ -222,13 +229,17 @@ export async function chatWithAIWithFallback(
   for (const currentModelId of modelsToTry) {
     try {
       console.log(`Đang thử model: ${currentModelId}`);
-      return await chatWithAI(currentModelId, messages, systemInstruction, tools, config);
+      const result = await chatWithAI(currentModelId, messages, systemInstruction, tools, config);
+      
+      // Kiểm tra xem kết quả có hợp lệ không (có text phản hồi hoặc dữ liệu quan trọng)
+      if (result && (result.text || result.recipe || result.photos || result.functionCalls)) {
+        return result;
+      }
+      
+      throw new Error("AI trả về phản hồi trống hoặc không hợp lệ");
     } catch (error: any) {
       console.error(`Lỗi với model ${currentModelId}:`, error);
       lastError = error;
-      
-      // Nếu lỗi là do thiếu API Key, không thử tiếp các model cùng provider nếu không có key
-      // Nhưng ở đây ta cứ thử tiếp các model khác trong danh sách fallback
       continue;
     }
   }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
-import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool } from '../lib/gemini';
+import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool, crawlRecipeTool } from '../lib/gemini';
 import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
@@ -161,6 +161,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isRecipeCrawActive, setIsRecipeCrawActive] = useState(false);
@@ -268,6 +269,28 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     }
   };
 
+  const crawlRecipe = async (url: string) => {
+    try {
+      const response = await fetch('/api/crawl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      if (!response.ok) throw new Error('Crawl failed');
+      const data = await response.json();
+      return `
+        Dữ liệu từ URL: ${url}
+        Tiêu đề: ${data.title}
+        Nguyên liệu tìm thấy: ${data.ingredients?.join(', ') || 'Không tìm thấy'}
+        Hướng dẫn tìm thấy: ${data.instructions?.join('\n') || 'Không tìm thấy'}
+        Nội dung thô (AI hãy phân tích): ${data.rawText}
+      `;
+    } catch (error) {
+      console.error('Crawl error:', error);
+      return "Không thể lấy dữ liệu từ URL này. Vui lòng kiểm tra lại URL hoặc trang web có thể chặn truy cập.";
+    }
+  };
+
   const searchDrive = async (searchQuery: string) => {
     if (!googleToken) return "Vui lòng kết nối Google Drive trước.";
     try {
@@ -329,19 +352,45 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     const files = e.target.files;
     if (!files) return;
 
-    const newFiles = await Promise.all(Array.from(files).map(async file => {
-      return new Promise<{data: string, mimeType: string, name: string}>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve({ data: base64, mimeType: file.type, name: file.name });
-        };
-        reader.readAsDataURL(file);
-      });
-    }));
+    setFileError(null);
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain', 'video/mp4', 'video/quicktime'];
 
-    setSelectedFiles(prev => [...prev, ...newFiles]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > MAX_SIZE) {
+        setFileError(`Tệp "${file.name}" quá lớn. Giới hạn tối đa là 10MB.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+      if (!SUPPORTED_TYPES.includes(file.type)) {
+        setFileError(`Định dạng tệp "${file.name}" (${file.type}) không được hỗ trợ.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+      validFiles.push(file);
+    }
+
+    try {
+      const newFiles = await Promise.all(validFiles.map(async file => {
+        return new Promise<{data: string, mimeType: string, name: string}>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve({ data: base64, mimeType: file.type, name: file.name });
+          };
+          reader.onerror = () => reject(new Error(`Không thể đọc tệp ${file.name}`));
+          reader.readAsDataURL(file);
+        });
+      }));
+
+      setSelectedFiles(prev => [...prev, ...newFiles]);
+    } catch (err: any) {
+      setFileError(err.message || "Đã xảy ra lỗi khi tải tệp lên.");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const processAiResponse = async (userMsg: ChatMessageData, allMessages: ChatMessageData[]) => {
@@ -367,62 +416,74 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       }
       history.push({ role: 'user', parts: currentParts });
 
-      const tools = googleToken ? [searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool] : undefined;
+      const { systemInstruction } = await import('../lib/gemini');
+      const tools = [crawlRecipeTool, ...(googleToken ? [searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool] : [])];
       
+      // Define fallback chain: Primary -> Gemini Flash -> DeepSeek (OR) -> Llama (Groq)
+      const fallbacks = [
+        'gemini-flash-latest',
+        'openrouter/deepseek/deepseek-chat',
+        'groq/llama-3.3-70b-versatile'
+      ].filter(id => id !== preferences.selectedModelId);
+
+      const aiConfig = { 
+        openaiKey: preferences.openaiKey, 
+        anthropicKey: preferences.anthropicKey, 
+        googleKey: preferences.googleKey,
+        openrouterKey: preferences.openrouterKey,
+        nvidiaKey: preferences.nvidiaKey,
+        groqKey: preferences.groqKey
+      };
+
       let aiResult;
-      const currentModel = AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId);
-      
       try {
-        if (currentModel?.provider === 'google') {
-          aiResult = await chatWithChef(history, tools, preferences.googleKey);
-          
-          if (aiResult.functionCalls) {
-            for (const call of aiResult.functionCalls) {
-              let toolResult = "";
-              if (call.name === 'search_google_drive') {
-                toolResult = await searchDrive(call.args.query);
-              } else if (call.name === 'search_google_photos') {
-                toolResult = await searchPhotos(call.args.query);
-              } else if (call.name === 'search_google_keep') {
-                toolResult = await searchKeep(call.args.query);
-              }
+        aiResult = await chatWithAIWithFallback(
+          preferences.selectedModelId, 
+          history, 
+          systemInstruction,
+          tools,
+          aiConfig,
+          fallbacks
+        );
 
-              history.push({ 
-                role: 'model', 
-                parts: [{ text: `Đang sử dụng RecipeCraw để tìm kiếm: ${call.args.query}` }] 
-              });
-              history.push({ 
-                role: 'user', 
-                parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
-              });
-              aiResult = await chatWithChef(history, tools, preferences.googleKey);
+        if (aiResult.functionCalls) {
+          for (const call of aiResult.functionCalls) {
+            let toolResult = "";
+            if (call.name === 'crawl_recipe') {
+              toolResult = await crawlRecipe(call.args.url);
+            } else if (call.name === 'search_google_drive') {
+              toolResult = await searchDrive(call.args.query);
+            } else if (call.name === 'search_google_photos') {
+              toolResult = await searchPhotos(call.args.query);
+            } else if (call.name === 'search_google_keep') {
+              toolResult = await searchKeep(call.args.query);
             }
-          }
-        } else {
-          const { systemInstruction } = await import('../lib/gemini');
-          // Define fallback chain: Primary -> Gemini Flash -> DeepSeek (OR) -> Llama (Groq)
-          const fallbacks = [
-            'gemini-flash-latest',
-            'openrouter/deepseek/deepseek-chat',
-            'groq/llama-3.3-70b-versatile'
-          ].filter(id => id !== preferences.selectedModelId);
 
-          aiResult = await chatWithAIWithFallback(
-            preferences.selectedModelId, 
-            history, 
-            systemInstruction,
-            undefined,
-            { 
-              openaiKey: preferences.openaiKey, 
-              anthropicKey: preferences.anthropicKey, 
-              googleKey: preferences.googleKey,
-              openrouterKey: preferences.openrouterKey,
-              nvidiaKey: preferences.nvidiaKey,
-              groqKey: preferences.groqKey
-            },
-            fallbacks
-          );
+            const actionMsg = call.name === 'crawl_recipe' 
+              ? `Đang lấy công thức từ: ${call.args.url}` 
+              : `Đang tìm kiếm: ${call.args.query}`;
+
+            history.push({ 
+              role: 'model', 
+              parts: [{ text: actionMsg }] 
+            });
+            history.push({ 
+              role: 'user', 
+              parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
+            });
+            aiResult = await chatWithAIWithFallback(
+              preferences.selectedModelId, 
+              history, 
+              systemInstruction,
+              tools,
+              aiConfig,
+              fallbacks
+            );
+          }
         }
+      } catch (error) {
+        throw error; // Let the outer catch handle it
+      }
 
         // Update user message status to completed
         await updateDoc(doc(db, 'chats', userMsg.id), { status: 'completed' });
@@ -514,13 +575,10 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
             ]
           });
         }
+      } finally {
+        isProcessingRef.current = false;
+        setIsProcessing(false);
       }
-    } catch (error) {
-      console.error("Process AI Response failed:", error);
-    } finally {
-      isProcessingRef.current = false;
-      setIsProcessing(false);
-    }
   };
 
   const handleSend = async (overrideText?: string) => {
@@ -1140,6 +1198,22 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       <div className="p-3 md:p-4 bg-white/80 backdrop-blur-md border-t border-stone-200 sticky bottom-0 z-30">
         <div className="max-w-4xl mx-auto space-y-3">
           <AnimatePresence>
+            {fileError && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-xl text-xs flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{fileError}</span>
+                </div>
+                <button onClick={() => setFileError(null)}>
+                  <X className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
             {selectedFiles.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
