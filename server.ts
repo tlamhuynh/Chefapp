@@ -7,6 +7,7 @@ import fetch from "node-fetch";
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
 
@@ -91,10 +92,17 @@ async function startServer() {
               apiKey: cfg.nvidiaKey || process.env.NVIDIA_API_KEY,
               baseURL: 'https://integrate.api.nvidia.com/v1'
             })(nvidiaModelId);
+          },
+          openrouter: () => {
+            const orModelId = mId.startsWith('openrouter/') ? mId.slice(11) : mId;
+            return createOpenRouter({
+              apiKey: cfg.openrouterKey || process.env.OPENROUTER_API_KEY
+            })(orModelId);
           }
         };
 
-        const providerKey = mId.includes('gemini') ? 'google' : 
+        const providerKey = mId.startsWith('openrouter/') ? 'openrouter' :
+                           mId.includes('gemini') ? 'google' :
                            mId.includes('gpt') ? 'openai' :
                            mId.includes('claude') ? 'anthropic' :
                            mId.includes('groq') ? 'groq' :

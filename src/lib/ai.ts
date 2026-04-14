@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 // Types
-export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nvidia' | 'groq';
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nvidia' | 'groq' | 'openrouter';
 
 export interface AIModel {
   id: string;
@@ -11,18 +11,18 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', description: 'Thế hệ mới nhất 2026. Cực nhanh và thông minh vượt trội.' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', description: 'Model mạnh mẽ nhất từ Google, hỗ trợ context khổng lồ.' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', description: 'Nhanh và tối ưu chi phí.' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', description: 'Model mạnh mẽ nhất từ Google cho các tác vụ phức tạp.' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp', provider: 'google', description: 'Thế hệ 2.0 mới nhất đang thử nghiệm.' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Model đa phương thức mạnh mẽ từ OpenAI.' },
   { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'groq', description: 'Tốc độ cực nhanh từ Groq. Phản hồi gần như tức thì.' },
   { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'groq', description: 'Tốc độ phản hồi tức thì cho các tác vụ nhanh.' },
-  { id: 'groq/compound', name: 'Groq Compound', provider: 'groq', description: 'Model phức hợp mới từ Groq, tối ưu cho suy luận.' },
-  { id: 'groq/compound-mini', name: 'Groq Compound Mini', provider: 'groq', description: 'Phiên bản nhỏ gọn, siêu nhanh của Compound.' },
-  { id: 'groq/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (Groq)', provider: 'groq', description: 'Thế hệ Llama 4 mới nhất trên hạ tầng Groq.' },
-  { id: 'groq/openai/gpt-oss-120b', name: 'GPT-OSS 120B (Groq)', provider: 'groq', description: 'Model mã nguồn mở quy mô lớn, hiệu suất cực cao.' },
-  { id: 'groq/meta-llama/llama-prompt-guard-2-86m', name: 'Llama Prompt Guard 2 (Groq)', provider: 'groq', description: 'Model bảo mật, ngăn chặn prompt injection.' },
+  { id: 'groq/mixtral-8x7b-32768', name: 'Mixtral 8x7B (Groq)', provider: 'groq', description: 'MoE model mã nguồn mở hiệu năng cao.' },
   { id: 'nvidia/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (NVIDIA)', provider: 'nvidia', description: 'Model mạnh mẽ từ NVIDIA NIM, độ trễ thấp.' },
+  { id: 'openrouter/anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (OpenRouter)', provider: 'openrouter', description: 'Sử dụng Claude 3.5 qua OpenRouter.' },
+  { id: 'openrouter/google/gemini-1.5-pro', name: 'Gemini 1.5 Pro (OpenRouter)', provider: 'openrouter', description: 'Sử dụng Gemini 1.5 Pro qua OpenRouter.' },
+  { id: 'openrouter/meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B (OpenRouter)', provider: 'openrouter', description: 'Model mã nguồn mở siêu lớn qua OpenRouter.' }
 ];
 
 export interface AIConfig {
@@ -31,6 +31,7 @@ export interface AIConfig {
   googleKey?: string;
   nvidiaKey?: string;
   groqKey?: string;
+  openrouterKey?: string;
 }
 
 // AI Interaction Functions

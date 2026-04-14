@@ -75,7 +75,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
 
       // Define fallback chain
       const fallbacks = [
-        'gemini-2.0-flash',
+        'gemini-1.5-flash',
         'openrouter/deepseek/deepseek-chat',
         'groq/llama-3.3-70b-versatile'
       ].filter(id => id !== preferences.selectedModelId);

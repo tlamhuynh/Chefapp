@@ -47,7 +47,7 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
         } : undefined;
 
         const result = await generateProactiveInsights(
-          preferences?.selectedModelId || 'gemini-2.0-flash',
+          preferences?.selectedModelId || 'gemini-1.5-flash',
           inventory,
           recipes,
           aiConfig
