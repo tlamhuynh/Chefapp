@@ -22,7 +22,7 @@ export default function App() {
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-1.5-flash-latest',
+    selectedModelId: 'gemini-2.0-flash',
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',

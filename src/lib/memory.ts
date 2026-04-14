@@ -56,7 +56,7 @@ export async function saveMemory(userId: string, key: string, value: string, imp
   }
 }
 
-export async function extractMemoriesFromChat(userId: string, messages: any[], modelId: string = 'gemini-1.5-flash-latest', config?: any) {
+export async function extractMemoriesFromChat(userId: string, messages: any[], modelId: string = 'gemini-2.0-flash', config?: any) {
   const systemInstruction = `Bạn là một hệ thống phân tích trí nhớ (Memory Extraction System).
 Nhiệm vụ của bạn là phân tích cuộc hội thoại giữa đầu bếp và AI để trích xuất các thông tin quan trọng về sở thích, phong cách, hạn chế hoặc mục tiêu của người dùng.
 
