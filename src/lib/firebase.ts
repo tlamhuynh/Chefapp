@@ -39,6 +39,7 @@ export const doc = (db: any, path: string, id?: string) => ({ path, id });
 export const query = (col: string, ...constraints: any[]) => ({ col, constraints });
 export const where = (field: string, op: string, value: any) => ({ type: 'where', field, op, value });
 export const orderBy = (field: string, dir: string = 'asc') => ({ type: 'orderBy', field, dir });
+export const limit = (n: number) => ({ type: 'limit', n });
 
 export const addDoc = async (colPath: string, data: any) => {
   const id = await LocalDb.addDoc(colPath, data);

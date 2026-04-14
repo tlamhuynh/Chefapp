@@ -100,232 +100,260 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
       exit={{ opacity: 0, y: 100 }}
       className="fixed inset-0 z-[60] bg-stone-50 flex flex-col"
     >
-      <header className="p-6 flex justify-between items-center bg-white border-b border-stone-200">
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full transition-colors">
-            <X className="w-6 h-6 text-stone-600" />
-          </button>
-          {!isEditing && (
-            <h2 className="text-lg font-bold text-stone-900 truncate max-w-[200px]">{recipe.title}</h2>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {!isNew && !isEditing && (
-            <>
-              <button
-                onClick={handleEdit}
-                className="p-2 text-stone-600 hover:bg-stone-100 rounded-xl transition-colors"
-                title="Chỉnh sửa"
-              >
-                <Edit2 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="p-2 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                title="Xóa"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-            </>
-          )}
-          
-          {isEditing && (
-            <button
-              onClick={handleUpdate}
-              disabled={isSaving}
-              className="bg-orange-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center gap-2 hover:bg-orange-700 transition-colors disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+      <header className="px-6 py-8 space-y-1 bg-white border-b border-stone-100">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <button onClick={onClose} className="w-10 h-10 bg-stone-100 rounded-xl flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-all active:scale-95">
+              <X className="w-5 h-5" />
             </button>
-          )}
-
-          {!isEditing && onFindSimilar && (
-            <button
-              onClick={() => onFindSimilar(recipe.theme || recipe.title)}
-              className="p-2 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-colors"
-              title="Tìm món tương tự"
-            >
-              <Sparkles className="w-5 h-5" />
-            </button>
-          )}
-
-          {!isEditing && (
-            <div className="relative">
-              <button
-                onClick={handleShare}
-                className="p-2 bg-orange-50 text-orange-600 rounded-xl hover:bg-orange-100 transition-colors"
-                title="Chia sẻ"
-              >
-                <Share2 className="w-5 h-5" />
-              </button>
-              <AnimatePresence>
-                {showShareTooltip && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="absolute right-0 top-full mt-2 bg-stone-900 text-white text-[10px] py-1 px-2 rounded whitespace-nowrap z-50 flex items-center gap-1"
-                  >
-                    <CheckIcon className="w-3 h-3 text-green-400" />
-                    Đã sao chép!
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            <div className="space-y-0.5">
+              <h1 className="text-2xl font-display font-bold text-stone-900 tracking-tight truncate max-w-[200px]">
+                {isEditing ? 'Chỉnh sửa' : recipe.title}
+              </h1>
+              <p className="text-stone-400 text-[10px] font-bold uppercase tracking-[0.2em]">
+                {isEditing ? 'Recipe Editor' : 'Chi tiết công thức'}
+              </p>
             </div>
-          )}
+          </div>
           
-          {isNew && onSave ? (
-            <button
-              onClick={onSave}
-              className="bg-orange-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center gap-2 hover:bg-orange-700 transition-colors"
-            >
-              <Save className="w-4 h-4" />
-              Lưu
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {!isNew && !isEditing && (
+              <>
+                <button
+                  onClick={handleEdit}
+                  className="w-10 h-10 bg-stone-100 text-stone-600 rounded-xl flex items-center justify-center hover:bg-stone-200 transition-all active:scale-95"
+                  title="Chỉnh sửa"
+                >
+                  <Edit2 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center hover:bg-red-100 transition-all active:scale-95"
+                  title="Xóa"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </>
+            )}
+            
+            {isEditing && (
+              <button
+                onClick={handleUpdate}
+                disabled={isSaving}
+                className="bg-stone-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-stone-800 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-stone-200"
+              >
+                <Save className="w-4 h-4" />
+                {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
+            )}
+
+            {!isEditing && onFindSimilar && (
+              <button
+                onClick={() => onFindSimilar(recipe.theme || recipe.title)}
+                className="w-10 h-10 bg-stone-100 text-stone-600 rounded-xl flex items-center justify-center hover:bg-stone-200 transition-all active:scale-95"
+                title="Tìm món tương tự"
+              >
+                <Sparkles className="w-5 h-5" />
+              </button>
+            )}
+
+            {!isEditing && (
+              <div className="relative">
+                <button
+                  onClick={handleShare}
+                  className="w-10 h-10 bg-stone-900 text-white rounded-xl flex items-center justify-center hover:bg-stone-800 transition-all active:scale-95 shadow-lg shadow-stone-200"
+                  title="Chia sẻ"
+                >
+                  <Share2 className="w-5 h-5" />
+                </button>
+                <AnimatePresence>
+                  {showShareTooltip && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute right-0 top-full mt-3 bg-stone-900 text-white text-[10px] font-bold py-2 px-3 rounded-xl whitespace-nowrap z-50 flex items-center gap-2 shadow-xl"
+                    >
+                      <CheckIcon className="w-3.5 h-3.5 text-green-400" />
+                      Đã sao chép!
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+            
+            {isNew && onSave ? (
+              <button
+                onClick={onSave}
+                className="bg-stone-900 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-stone-800 transition-all active:scale-95 shadow-lg shadow-stone-200"
+              >
+                <Save className="w-4 h-4" />
+                Lưu
+              </button>
+            ) : null}
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-8">
+      <div className="flex-1 overflow-y-auto p-6 space-y-10 no-scrollbar">
         {isEditing ? (
-          <div className="space-y-6 pb-12">
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Tiêu đề công thức</label>
+          <div className="space-y-8 pb-12">
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 ml-1">Tiêu đề công thức</label>
               <input
                 type="text"
                 value={editedRecipe.title}
                 onChange={(e) => setEditedRecipe({ ...editedRecipe, title: e.target.value })}
-                className="w-full bg-white border border-stone-200 rounded-2xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                className="w-full bg-white border border-stone-100 rounded-2xl py-4 px-6 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-stone-900/5 transition-all shadow-sm"
               />
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Nguyên liệu</label>
+              <div className="flex items-center justify-between px-1">
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">Nguyên liệu</label>
                 <button
                   onClick={addIngredient}
-                  className="flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700"
+                  className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-stone-900 hover:text-stone-600 transition-colors"
                 >
-                  <Plus className="w-3 h-3" /> Thêm nguyên liệu
+                  <Plus className="w-3.5 h-3.5" /> Thêm mới
                 </button>
               </div>
               <div className="space-y-3">
                 {editedRecipe.ingredients.map((ing: any, i: number) => (
-                  <div key={i} className="flex gap-2 items-start bg-white p-3 rounded-2xl border border-stone-100 shadow-sm">
-                    <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <input
-                        type="text"
-                        placeholder="Tên"
-                        value={ing.name}
-                        onChange={(e) => updateIngredient(i, 'name', e.target.value)}
-                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Lượng"
-                        value={ing.amount}
-                        onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
-                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Đơn vị"
-                        value={ing.unit}
-                        onChange={(e) => updateIngredient(i, 'unit', e.target.value)}
-                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Giá nhập"
-                        value={ing.purchasePrice}
-                        onChange={(e) => updateIngredient(i, 'purchasePrice', e.target.value)}
-                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Cost"
-                        value={ing.costPerAmount}
-                        onChange={(e) => updateIngredient(i, 'costPerAmount', e.target.value)}
-                        className="bg-stone-50 border-none rounded-lg p-2 text-sm focus:ring-1 focus:ring-orange-500"
-                      />
+                  <div key={i} className="flex gap-3 items-start bg-white p-4 rounded-[2rem] border border-stone-100 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="space-y-1.5">
+                        <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest ml-1">Tên</p>
+                        <input
+                          type="text"
+                          placeholder="Tên"
+                          value={ing.name}
+                          onChange={(e) => updateIngredient(i, 'name', e.target.value)}
+                          className="w-full bg-stone-50 border-none rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-stone-900/5 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest ml-1">Lượng</p>
+                        <input
+                          type="text"
+                          placeholder="Lượng"
+                          value={ing.amount}
+                          onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
+                          className="w-full bg-stone-50 border-none rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-stone-900/5 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest ml-1">Đơn vị</p>
+                        <input
+                          type="text"
+                          placeholder="Đơn vị"
+                          value={ing.unit}
+                          onChange={(e) => updateIngredient(i, 'unit', e.target.value)}
+                          className="w-full bg-stone-50 border-none rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-stone-900/5 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest ml-1">Giá nhập</p>
+                        <input
+                          type="number"
+                          placeholder="Giá nhập"
+                          value={ing.purchasePrice}
+                          onChange={(e) => updateIngredient(i, 'purchasePrice', e.target.value)}
+                          className="w-full bg-stone-50 border-none rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-stone-900/5 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[8px] font-bold text-stone-400 uppercase tracking-widest ml-1">Cost</p>
+                        <input
+                          type="number"
+                          placeholder="Cost"
+                          value={ing.costPerAmount}
+                          onChange={(e) => updateIngredient(i, 'costPerAmount', e.target.value)}
+                          className="w-full bg-stone-50 border-none rounded-xl p-2.5 text-xs font-medium focus:ring-2 focus:ring-stone-900/5 transition-all"
+                        />
+                      </div>
                     </div>
                     <button
                       onClick={() => removeIngredient(i)}
-                      className="p-2 text-stone-300 hover:text-red-500 transition-colors"
+                      className="mt-6 p-2 text-stone-300 hover:text-red-500 transition-colors"
                     >
-                      <Minus className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-stone-400">Hướng dẫn thực hiện</label>
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 ml-1">Hướng dẫn thực hiện</label>
               <textarea
                 value={editedRecipe.instructions}
                 onChange={(e) => setEditedRecipe({ ...editedRecipe, instructions: e.target.value })}
-                rows={10}
-                className="w-full bg-white border border-stone-200 rounded-2xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all resize-none"
+                rows={12}
+                className="w-full bg-white border border-stone-100 rounded-[2rem] py-6 px-6 text-sm leading-relaxed focus:outline-none focus:ring-4 focus:ring-stone-900/5 transition-all resize-none shadow-sm"
               />
             </div>
           </div>
         ) : (
           <>
             {/* Costing Card */}
-            <section className="bg-stone-900 text-white p-6 rounded-3xl shadow-xl space-y-4">
-              <div className="flex items-center gap-2 text-orange-400">
-                <DollarSign className="w-5 h-5" />
-                <h3 className="font-bold uppercase tracking-widest text-xs">Chi phí & Định giá</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-stone-400 text-[10px] uppercase tracking-wider">Tổng chi phí</p>
-                  <p className="text-2xl font-bold">${recipe.totalCost?.toLocaleString()}</p>
+            <section className="bg-stone-900 text-white p-8 rounded-[2.5rem] shadow-2xl shadow-stone-200 space-y-6 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-orange-500/20 transition-all duration-700" />
+              <div className="flex items-center gap-3 text-orange-400">
+                <div className="w-8 h-8 bg-orange-400/10 rounded-xl flex items-center justify-center">
+                  <DollarSign className="w-4 h-4" />
                 </div>
-                <div className="space-y-1">
-                  <p className="text-stone-400 text-[10px] uppercase tracking-wider">Giá đề xuất</p>
-                  <p className="text-2xl font-bold text-orange-400">${recipe.recommendedPrice?.toLocaleString()}</p>
+                <h3 className="font-bold uppercase tracking-[0.2em] text-[10px]">Chi phí & Định giá</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-8 relative z-10">
+                <div className="space-y-1.5">
+                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Tổng chi phí</p>
+                  <p className="text-3xl font-display font-bold">${recipe.totalCost?.toLocaleString()}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Giá đề xuất</p>
+                  <p className="text-3xl font-display font-bold text-orange-400">${recipe.recommendedPrice?.toLocaleString()}</p>
                 </div>
               </div>
-              <div className="pt-4 border-t border-stone-800">
-                <p className="text-stone-500 text-[10px] italic">Được tính toán bởi Sub-agent Costing</p>
+              <div className="pt-6 border-t border-white/5 flex items-center justify-between">
+                <p className="text-stone-500 text-[10px] font-bold uppercase tracking-widest">SousChef Intelligence</p>
+                <Sparkles className="w-4 h-4 text-stone-700" />
               </div>
             </section>
 
             {/* Ingredients */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-2 text-stone-900">
-                <ListChecks className="w-5 h-5" />
-                <h3 className="font-bold text-lg">Nguyên liệu & Chi phí</h3>
+            <section className="space-y-6">
+              <div className="flex items-center gap-3 text-stone-900 px-1">
+                <div className="w-8 h-8 bg-stone-100 rounded-xl flex items-center justify-center">
+                  <ListChecks className="w-4 h-4" />
+                </div>
+                <h3 className="font-display font-bold text-xl">Nguyên liệu & Chi phí</h3>
               </div>
-              <div className="bg-white rounded-3xl border border-stone-100 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-[2.5rem] border border-stone-100 shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left border-collapse">
                     <thead>
-                      <tr className="bg-stone-50 border-b border-stone-100">
-                        <th className="p-4 font-bold text-stone-600">Tên nguyên liệu</th>
-                        <th className="p-4 font-bold text-stone-600 text-right">Định lượng</th>
-                        <th className="p-4 font-bold text-stone-600 text-right">Giá nhập</th>
-                        <th className="p-4 font-bold text-stone-600 text-right">Cost</th>
+                      <tr className="bg-stone-50/50 border-b border-stone-100">
+                        <th className="p-5 text-[10px] font-bold text-stone-400 uppercase tracking-widest">Tên nguyên liệu</th>
+                        <th className="p-5 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right">Định lượng</th>
+                        <th className="p-5 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right">Giá nhập</th>
+                        <th className="p-5 text-[10px] font-bold text-stone-400 uppercase tracking-widest text-right">Cost</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-stone-50">
                       {recipe.ingredients.map((ing: any, i: number) => (
-                        <tr key={i} className="border-b border-stone-50 last:border-0 hover:bg-stone-50/50 transition-colors">
-                          <td className="p-4">
-                            <p className="font-medium text-stone-900">{ing.name}</p>
+                        <tr key={i} className="hover:bg-stone-50/50 transition-colors group">
+                          <td className="p-5">
+                            <p className="font-bold text-stone-900">{ing.name}</p>
                           </td>
-                          <td className="p-4 text-right">
-                            <p className="text-stone-600">{ing.amount} {ing.unit}</p>
+                          <td className="p-5 text-right">
+                            <p className="text-stone-600 font-medium">{ing.amount} {ing.unit}</p>
                           </td>
-                          <td className="p-4 text-right">
-                            <p className="text-stone-400">${ing.purchasePrice?.toLocaleString()}</p>
+                          <td className="p-5 text-right">
+                            <p className="text-stone-400 font-medium">${ing.purchasePrice?.toLocaleString()}</p>
                           </td>
-                          <td className="p-4 text-right">
-                            <p className="font-bold text-stone-900">${ing.costPerAmount?.toLocaleString()}</p>
+                          <td className="p-5 text-right">
+                            <p className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">${ing.costPerAmount?.toLocaleString()}</p>
                           </td>
                         </tr>
                       ))}
@@ -336,13 +364,17 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
             </section>
 
             {/* Instructions */}
-            <section className="space-y-4 pb-6">
-              <div className="flex items-center gap-2 text-stone-900">
-                <ChefHat className="w-5 h-5" />
-                <h3 className="font-bold text-lg">Hướng dẫn thực hiện</h3>
+            <section className="space-y-6 pb-6">
+              <div className="flex items-center gap-3 text-stone-900 px-1">
+                <div className="w-8 h-8 bg-stone-100 rounded-xl flex items-center justify-center">
+                  <ChefHat className="w-4 h-4" />
+                </div>
+                <h3 className="font-display font-bold text-xl">Hướng dẫn thực hiện</h3>
               </div>
-              <div className="prose prose-stone max-w-none text-stone-600 leading-relaxed">
-                <ReactMarkdown>{recipe.instructions}</ReactMarkdown>
+              <div className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-sm">
+                <div className="markdown-body prose prose-stone prose-sm max-w-none text-stone-600 leading-relaxed">
+                  <ReactMarkdown>{recipe.instructions}</ReactMarkdown>
+                </div>
               </div>
             </section>
 
@@ -351,11 +383,10 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
               <section className="pb-12">
                 <button
                   onClick={() => onFindSimilar(recipe.theme || recipe.title)}
-                  className="w-full py-4 px-6 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 group"
-                  title="Tìm các món ăn có phong cách hoặc nguyên liệu tương tự"
+                  className="w-full py-5 px-8 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-[2rem] flex items-center justify-center gap-4 transition-all active:scale-95 shadow-xl shadow-stone-200 group"
                 >
-                  <Sparkles className="w-5 h-5 text-orange-500 group-hover:animate-pulse" />
-                  Tìm món tương tự
+                  <Sparkles className="w-5 h-5 text-orange-400 group-hover:rotate-12 transition-transform" />
+                  <span>Tìm món tương tự</span>
                 </button>
               </section>
             )}

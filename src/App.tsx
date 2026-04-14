@@ -3,9 +3,12 @@ import { auth, onAuthStateChanged, User, signInWithPopup, googleProvider, db, do
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { RecipeList } from './components/RecipeList';
+import { MenuManagement } from './components/MenuManagement';
 import { ChefChat } from './components/ChefChat';
+import { RecipeGenerator } from './components/RecipeGenerator';
 import { CreativeAgent } from './components/CreativeAgent';
 import { Profile } from './components/Profile';
+import { Gallery } from './components/Gallery';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,12 +16,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'recipes' | 'chat' | 'profile' | 'creative'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'recipes' | 'chat' | 'profile' | 'creative' | 'gallery' | 'generator'>('dashboard');
   const [preferences, setPreferences] = useState({
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-flash-latest',
+    selectedModelId: 'gemini-3.1-flash-lite-preview',
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',
@@ -196,10 +199,13 @@ export default function App() {
 
           <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
             <AnimatePresence mode="wait">
-              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} />}
+              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} preferences={preferences} />}
+              {activeTab === 'menu' && <MenuManagement key="menu" setActiveTab={setActiveTab} preferences={preferences} />}
               {activeTab === 'recipes' && <RecipeList key="recipes" />}
+              {activeTab === 'generator' && <RecipeGenerator key="generator" preferences={preferences} setActiveTab={setActiveTab} />}
               {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} setActiveTab={setActiveTab} />}
               {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} />}
+              {activeTab === 'gallery' && <Gallery key="gallery" />}
               {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
             </AnimatePresence>
           </Layout>

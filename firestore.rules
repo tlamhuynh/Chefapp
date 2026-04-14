@@ -142,6 +142,25 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
+    function isValidMemory(data) {
+      return hasOnlyAllowedFields(['userId', 'key', 'value', 'importance', 'updatedAt']) &&
+             data.userId is string &&
+             data.key is string && data.key.size() > 0 && data.key.size() < 100 &&
+             data.value is string && data.value.size() > 0 && data.value.size() < 5000 &&
+             (!('importance' in data) || (data.importance is number && data.importance >= 1 && data.importance <= 10)) &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidSavedImage(data) {
+      return hasOnlyAllowedFields(['url', 'filename', 'title', 'userId', 'createdAt', 'source']) &&
+             data.url is string && data.url.size() > 0 && data.url.size() < 2000 &&
+             (!('filename' in data) || data.filename is string) &&
+             (!('title' in data) || data.title is string) &&
+             data.userId is string &&
+             data.createdAt is timestamp &&
+             (!('source' in data) || data.source is string);
+    }
+
     // ===============================================================
     // Collection Rules
     // ===============================================================
@@ -150,6 +169,13 @@ service cloud.firestore {
       allow read: if isOwner(uid) || isAdmin();
       allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) && request.resource.data.role == 'chef' || isAdmin());
       allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) && request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /memories/{memoryId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidMemory(request.resource.data) && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isValidMemory(request.resource.data) && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId) || isAdmin();
     }
 
     match /recipes/{recipeId} {
@@ -177,6 +203,13 @@ service cloud.firestore {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if isAuthenticated() && isValidChatMessage(request.resource.data) && isOwner(request.resource.data.userId);
       allow update: if isAuthenticated() && isValidChatMessage(request.resource.data) && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId) || isAdmin();
+    }
+
+    match /saved_images/{imageId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidSavedImage(request.resource.data) && isOwner(request.resource.data.userId);
+      allow update: if isAuthenticated() && isValidSavedImage(request.resource.data) && isOwner(resource.data.userId) && request.resource.data.userId == resource.data.userId;
       allow delete: if isAuthenticated() && isOwner(resource.data.userId) || isAdmin();
     }
   }

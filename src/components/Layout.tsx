@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, BookOpen, MessageSquare, User, Palette } from 'lucide-react';
+import { LayoutDashboard, BookOpen, MessageSquare, User, Palette, ClipboardList, Image as ImageIcon, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -12,52 +12,56 @@ interface LayoutProps {
 export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   const tabs = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Trang chủ' },
+    { id: 'menu', icon: ClipboardList, label: 'Vận hành' },
     { id: 'recipes', icon: BookOpen, label: 'Công thức' },
+    { id: 'generator', icon: Wand2, label: 'Sáng tạo' },
     { id: 'creative', icon: Palette, label: 'GemAgent' },
     { id: 'chat', icon: MessageSquare, label: 'Đầu bếp' },
+    { id: 'gallery', icon: ImageIcon, label: 'Bộ sưu tập' },
     { id: 'profile', icon: User, label: 'Cá nhân' },
   ];
 
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col pt-[env(safe-area-inset-top)]">
-      <main className="flex-1 w-full max-w-lg mx-auto relative pb-24 md:pb-8 md:pt-6">
-        <div className="px-4 sm:px-6">
+    <div className="min-h-screen bg-white flex flex-col">
+      <main className="flex-1 w-full max-w-lg mx-auto relative pb-32 pt-8">
+        <div className="px-4">
           {children}
         </div>
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-stone-200/50 px-6 py-4 z-50 md:sticky md:top-[calc(100vh-80px)] md:bg-white/90 md:rounded-full md:max-w-md md:mx-auto md:mb-6 md:shadow-xl md:border md:border-stone-100">
-        <div className="flex justify-between items-center max-w-md mx-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "flex flex-col items-center gap-1.5 transition-all duration-300 relative group",
-                activeTab === tab.id ? "text-stone-900 scale-110" : "text-stone-400 hover:text-stone-600"
-              )}
-            >
-              <div className={cn(
-                "p-2 rounded-xl transition-all duration-300",
-                activeTab === tab.id ? "bg-stone-100" : "bg-transparent group-hover:bg-stone-50"
-              )}>
-                <tab.icon className={cn("w-5 h-5 transition-transform", activeTab === tab.id && "scale-110")} />
-              </div>
-              <span className={cn(
-                "text-[9px] font-bold uppercase tracking-[0.1em] transition-opacity",
-                activeTab === tab.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              )}>
-                {tab.label}
-              </span>
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="activeTabIndicator"
-                  className="absolute -bottom-1 w-1 h-1 bg-stone-900 rounded-full"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                />
-              )}
-            </button>
-          ))}
+      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-6 z-50">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-neutral-100 flex justify-between items-center">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "relative flex flex-col items-center justify-center py-3 px-1 rounded-2xl transition-all duration-300 flex-1",
+                  isActive ? "text-neutral-900" : "text-neutral-400 hover:text-neutral-600"
+                )}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="navIndicator"
+                    className="absolute inset-0 bg-neutral-50 rounded-2xl"
+                    transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                  />
+                )}
+                <tab.icon className={cn(
+                  "w-5 h-5 relative z-10 transition-all duration-300",
+                  isActive ? "scale-100" : "scale-90 opacity-70"
+                )} />
+                <span className={cn(
+                  "text-[9px] font-medium tracking-tight relative z-10 transition-all duration-300 mt-1",
+                  isActive ? "opacity-100" : "opacity-0 scale-90"
+                )}>
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>

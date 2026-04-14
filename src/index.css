@@ -1,56 +1,49 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Playfair Display", serif;
+  --font-display: "Outfit", sans-serif;
   
-  --radius-3xl: 2rem;
-  --radius-4xl: 2.5rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
+
+  --color-brand-50: #fafafa;
+  --color-brand-100: #f5f5f5;
+  --color-brand-500: #171717;
+  --color-brand-600: #0a0a0a;
+  --color-brand-900: #000000;
 }
 
 @layer base {
   body {
-    @apply bg-stone-50 text-stone-900 font-sans antialiased selection:bg-orange-100 selection:text-orange-900;
+    @apply bg-white text-neutral-900 font-sans antialiased selection:bg-neutral-100 selection:text-neutral-900;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans font-semibold tracking-tight;
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm;
+    @apply bg-white border border-neutral-100 shadow-[0_2px_12px_rgba(0,0,0,0.02)] transition-all duration-300;
   }
   
   .btn-primary {
-    @apply bg-stone-900 text-white font-semibold py-4 px-6 rounded-2xl transition-all active:scale-95 hover:bg-stone-800 disabled:opacity-50 shadow-lg shadow-stone-200;
+    @apply bg-neutral-900 text-white font-medium py-3.5 px-7 rounded-xl transition-all active:scale-[0.98] hover:bg-neutral-800 disabled:opacity-50;
   }
   
   .input-base {
-    @apply w-full bg-white border border-stone-200 rounded-2xl py-4 px-6 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all shadow-sm placeholder:text-stone-400;
+    @apply w-full bg-neutral-50 border border-neutral-100 rounded-xl py-3.5 px-5 focus:outline-none focus:bg-white focus:border-neutral-900 transition-all placeholder:text-neutral-400 text-sm;
   }
-}
 
-/* Custom scrollbar for mobile feel */
-::-webkit-scrollbar {
-  width: 0px;
-  background: transparent;
-}
-
-/* Smooth page transitions */
-.page-transition-enter {
-  opacity: 0;
-  transform: translateY(10px);
-}
-.page-transition-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 300ms, transform 300ms;
-}
-.page-transition-exit {
-  opacity: 1;
-  transform: translateY(0);
-}
-.page-transition-exit-active {
-  opacity: 0;
-  transform: translateY(-10px);
-  transition: opacity 300ms, transform 300ms;
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

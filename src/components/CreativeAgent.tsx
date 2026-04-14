@@ -72,7 +72,7 @@ export function CreativeAgent({ preferences, setActiveTab }: { preferences: any,
 
       // Define fallback chain
       const fallbacks = [
-        'gemini-flash-latest',
+        'gemini-3.1-flash-lite-preview',
         'openrouter/deepseek/deepseek-chat',
         'groq/llama-3.3-70b-versatile'
       ].filter(id => id !== preferences.selectedModelId);
@@ -147,83 +147,110 @@ export function CreativeAgent({ preferences, setActiveTab }: { preferences: any,
   const isActuallyTyping = isProcessing;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] bg-stone-50">
-      <header className="p-4 bg-white border-b border-stone-100 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center shadow-inner">
-            <Palette className="w-6 h-6 text-purple-600" />
+    <div className="flex flex-col h-full bg-stone-50/50">
+      <header className="px-6 py-8 space-y-1">
+        <div className="flex justify-between items-center">
+          <div className="space-y-0.5">
+            <h1 className="text-3xl font-display font-bold text-stone-900 tracking-tight">Sáng tạo</h1>
+            <p className="text-stone-400 text-[10px] font-bold uppercase tracking-[0.2em]">Branding • Styling • Content</p>
           </div>
-          <div>
-            <h2 className="font-bold text-stone-900 leading-none">GemAgent</h2>
-            <p className="text-[10px] text-purple-600 font-bold uppercase tracking-widest mt-1">Creative Expert</p>
+          <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center shadow-xl shadow-stone-200">
+            <Palette className="w-6 h-6 text-white" />
           </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto px-6 space-y-6 no-scrollbar pb-10">
         {messages.map((msg) => (
-          <div key={msg.id} className={cn("flex flex-col", msg.sender === 'user' ? "items-end" : "items-start")}>
+          <motion.div
+            key={msg.id}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              "flex gap-4 max-w-[90%] md:max-w-[85%]",
+              msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
+            )}
+          >
             <div className={cn(
-              "max-w-[85%] p-4 rounded-2xl shadow-sm",
-              msg.sender === 'user' 
-                ? "bg-purple-600 text-white rounded-tr-none" 
-                : "bg-white border border-stone-100 text-stone-800 rounded-tl-none"
+              "w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm transition-all",
+              msg.sender === 'user' ? "bg-stone-900" : "bg-white border border-stone-100"
             )}>
-              <div className="markdown-body text-sm">
-                <ReactMarkdown>{msg.text}</ReactMarkdown>
+              {msg.sender === 'user' ? <User className="w-5 h-5 text-stone-300" /> : <Palette className="w-5 h-5 text-stone-900" />}
+            </div>
+            <div className={cn(
+              "space-y-3 flex flex-col",
+              msg.sender === 'user' ? "items-end" : "items-start"
+            )}>
+              <div className={cn(
+                "p-5 rounded-[2rem] text-sm leading-relaxed shadow-sm transition-all",
+                msg.sender === 'user' 
+                  ? "bg-stone-900 text-white rounded-tr-none" 
+                  : "bg-white border border-stone-100 text-stone-800 rounded-tl-none"
+              )}>
+                <div className="markdown-body prose prose-stone prose-sm max-w-none">
+                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                </div>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
         {isActuallyTyping && (
-          <div className="flex items-start gap-3 mr-auto">
-            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Palette className="w-4 h-4 text-purple-600" />
+          <div className="flex gap-4 mr-auto">
+            <div className="w-10 h-10 bg-white border border-stone-100 rounded-2xl flex items-center justify-center shadow-sm">
+              <Palette className="w-5 h-5 text-stone-900" />
             </div>
-            <div className="bg-white border border-stone-100 p-4 rounded-2xl rounded-tl-none shadow-sm flex gap-1">
-              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
-              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
-              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-purple-300 rounded-full" />
+            <div className="bg-white border border-stone-100 p-5 rounded-[2rem] rounded-tl-none shadow-sm flex gap-1.5">
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-stone-300 rounded-full" />
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-stone-300 rounded-full" />
+              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-stone-300 rounded-full" />
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 bg-white border-t border-stone-100 space-y-3">
-        {messages.length > 0 && messages[messages.length - 1].sender === 'ai' && messages[messages.length - 1].suggestions && (
-          <div className="flex flex-wrap gap-2 mb-1">
-            {messages[messages.length - 1].suggestions?.map((s, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                onClick={() => handleSuggestionClick(s)}
-                className="bg-purple-50 border border-purple-100 text-purple-700 px-3 py-1.5 rounded-full text-[10px] font-bold hover:bg-purple-100 transition-all shadow-sm flex items-center gap-1.5 group"
-              >
-                <Sparkles className="w-3 h-3 text-purple-400 group-hover:rotate-12 transition-transform" />
-                {s.label}
-              </motion.button>
-            ))}
+      <div className="p-4 md:p-6 bg-white/80 backdrop-blur-xl border-t border-stone-100 sticky bottom-0 z-30">
+        <div className="max-w-4xl mx-auto space-y-4">
+          {messages.length > 0 && messages[messages.length - 1].sender === 'ai' && messages[messages.length - 1].suggestions && (
+            <div className="flex flex-wrap gap-2 mb-1">
+              {messages[messages.length - 1].suggestions?.map((s, i) => (
+                <motion.button
+                  key={i}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  onClick={() => handleSuggestionClick(s)}
+                  className="bg-white border border-stone-100 text-stone-500 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-900 hover:text-white hover:border-stone-900 transition-all shadow-sm active:scale-95"
+                >
+                  {s.label}
+                </motion.button>
+              ))}
+            </div>
+          )}
+          <div className="relative flex items-center gap-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Hỏi GemAgent về thiết kế, styling..."
+              className="w-full bg-stone-100 border-none rounded-[2rem] py-4 pl-6 pr-16 text-sm focus:ring-4 focus:ring-stone-900/5 focus:bg-white transition-all shadow-sm"
+            />
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isProcessing}
+              className="absolute right-2 top-2 bottom-2 w-12 bg-stone-900 rounded-xl flex items-center justify-center text-white shadow-lg shadow-stone-200 hover:bg-stone-800 disabled:opacity-20 disabled:shadow-none transition-all active:scale-95"
+            >
+              {isProcessing ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+            </button>
           </div>
-        )}
-        <div className="relative flex items-center gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Hỏi GemAgent về thiết kế, styling..."
-            className="flex-1 bg-stone-50 border-none rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-purple-500 transition-all"
-          />
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || isProcessing}
-            className="bg-purple-600 text-white p-3 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:scale-100 transition-all active:scale-95 shadow-lg shadow-purple-100"
-          >
-            <Send className="w-5 h-5" />
-          </button>
+          <p className="text-[9px] text-center text-stone-400 font-bold uppercase tracking-[0.2em]">
+            Powered by Gemini 1.5 Pro • AI can make mistakes
+          </p>
         </div>
       </div>
     </div>

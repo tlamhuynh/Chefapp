@@ -34,20 +34,57 @@
             "type": "object",
             "properties": {
               "name": { "type": "string" },
-              "amount": { "type": "string" },
+              "amount": { "type": "number" },
               "unit": { "type": "string" },
-              "price": { "type": "number" }
+              "purchasePrice": { "type": "number" },
+              "costPerAmount": { "type": "number" },
+              "inventoryItemId": { "type": "string" }
             },
-            "required": ["name", "amount", "unit", "price"]
+            "required": ["name", "amount", "unit"]
           }
         },
         "instructions": { "type": "string" },
-        "cost": { "type": "number" },
+        "totalCost": { "type": "number" },
         "recommendedPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "active", "archived"] },
         "createdAt": { "type": "string", "format": "date-time" },
-        "authorId": { "type": "string" }
+        "authorId": { "type": "string" },
+        "version": { "type": "number" },
+        "notes": { "type": "string" }
       },
       "required": ["title", "authorId"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Stock items in the kitchen",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "currentStock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "unit": { "type": "string" },
+        "lastPurchasePrice": { "type": "number" },
+        "category": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date" },
+        "authorId": { "type": "string" }
+      },
+      "required": ["name", "currentStock", "unit", "authorId"]
+    },
+    "RecipeVersion": {
+      "title": "RecipeVersion",
+      "description": "Historical versions or experiments of a recipe",
+      "type": "object",
+      "properties": {
+        "recipeId": { "type": "string" },
+        "versionNumber": { "type": "number" },
+        "changes": { "type": "string" },
+        "ingredients": { "type": "array" },
+        "instructions": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipeId", "versionNumber"]
     },
     "Order": {
       "title": "Order",
@@ -97,12 +134,43 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "title"]
+    },
+    "Memory": {
+      "title": "Memory",
+      "description": "Long-term memory for the AI agent to learn from user interactions",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "key": { "type": "string", "description": "The category or key of the memory (e.g., 'dietary_restrictions')" },
+        "value": { "type": "string", "description": "The actual information remembered" },
+        "importance": { "type": "number", "description": "How important this memory is (1-10)" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "key", "value"]
+    },
+    "SavedImage": {
+      "title": "SavedImage",
+      "description": "Images of dishes saved by the user from chat or other sources",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "filename": { "type": "string" },
+        "title": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "description": "Where the image came from (e.g., 'chef_chat')" }
+      },
+      "required": ["url", "userId", "createdAt"]
     }
   },
   "firestore": {
     "/users/{uid}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "/memories/{memoryId}": {
+      "schema": "Memory",
+      "description": "Agent long-term memory"
     },
     "/recipes/{recipeId}": {
       "schema": "Recipe",
@@ -119,6 +187,18 @@
     "/chats/{chatId}": {
       "schema": "ChatMessage",
       "description": "Chef chat history"
+    },
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Kitchen inventory"
+    },
+    "/recipe_versions/{versionId}": {
+      "schema": "RecipeVersion",
+      "description": "Recipe version history"
+    },
+    "/saved_images/{imageId}": {
+      "schema": "SavedImage",
+      "description": "User's saved dish images"
     }
   }
 }

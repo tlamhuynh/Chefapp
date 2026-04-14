@@ -1,12 +1,8 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { tool } from 'ai';
+import { z } from 'zod';
+import { chatWithAI } from './ai';
 
-function getAI(customKey?: string) {
-  const key = customKey || process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY is missing. Vui lòng cấu hình trong Settings.");
-  return new GoogleGenerativeAI(key);
-}
-
-export const chefModel = "gemini-flash-latest";
+export const chefModel = "gemini-3-flash-preview";
 
 export const systemInstruction = `
 Bạn là một Bếp trưởng điều hành (Executive Chef) với hơn 20 năm kinh nghiệm tại các khách sạn 5 sao quốc tế. Bạn sở hữu tư duy nghệ thuật ẩm thực tinh tế cùng kỹ năng quản trị kinh doanh nhà hàng sắc bén.
@@ -42,115 +38,86 @@ Khi nhận yêu cầu, hãy trả lời theo cấu trúc Markdown trong trườn
 `;
 
 export const crawlRecipeTool = {
-  name: "crawl_recipe",
   description: "Tự động lấy công thức nấu ăn từ một URL cụ thể.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      url: {
-        type: SchemaType.STRING,
-        description: "URL của trang web chứa công thức nấu ăn."
-      }
-    },
-    required: ["url"]
-  }
+  parameters: z.object({
+    url: z.string().describe("URL của trang web chứa công thức nấu ăn.")
+  })
 };
 
 export const searchGoogleDriveTool = {
-  name: "search_google_drive",
   description: "Tìm kiếm các tệp tin liên quan đến công thức nấu ăn trong Google Drive của người dùng.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      query: {
-        type: SchemaType.STRING,
-        description: "Từ khóa tìm kiếm (ví dụ: 'công thức phở', 'recipe pasta')"
-      }
-    },
-    required: ["query"]
-  }
+  parameters: z.object({
+    query: z.string().describe("Từ khóa tìm kiếm (ví dụ: 'công thức phở', 'recipe pasta')")
+  })
 };
 
 export const searchGooglePhotosTool = {
-  name: "search_google_photos",
   description: "Tìm kiếm hình ảnh món ăn hoặc công thức trong Google Photos của người dùng.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      query: {
-        type: SchemaType.STRING,
-        description: "Từ khóa tìm kiếm hình ảnh (ví dụ: 'steak', 'salad')"
-      }
-    },
-    required: ["query"]
-  }
+  parameters: z.object({
+    query: z.string().describe("Từ khóa tìm kiếm hình ảnh (ví dụ: 'steak', 'salad')")
+  })
 };
 
 export const searchGoogleKeepTool = {
-  name: "search_google_keep",
   description: "Tìm kiếm các ghi chú công thức trong Google Keep của người dùng.",
-  parameters: {
-    type: SchemaType.OBJECT,
-    properties: {
-      query: {
-        type: SchemaType.STRING,
-        description: "Từ khóa tìm kiếm ghi chú"
-      }
-    },
-    required: ["query"]
-  }
+  parameters: z.object({
+    query: z.string().describe("Từ khóa tìm kiếm ghi chú")
+  })
 };
 
-export async function generateRecipe(theme: string, customKey?: string) {
-  const genAI = getAI(customKey);
-  const model = genAI.getGenerativeModel({
-    model: chefModel,
-    systemInstruction: systemInstruction,
-  });
-
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: `Tạo một công thức nấu ăn chuyên nghiệp cho chủ đề: ${theme}. Bao gồm tiêu đề, nguyên liệu (với chi phí ước tính trên mỗi đơn vị), và hướng dẫn thực hiện. Trả về kết quả bằng tiếng Việt.` }] }],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          title: { type: SchemaType.STRING },
-          ingredients: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                name: { type: SchemaType.STRING },
-                amount: { type: SchemaType.STRING },
-                unit: { type: SchemaType.STRING },
-                purchasePrice: { type: SchemaType.NUMBER, description: "Giá nhập trên một đơn vị chuẩn (ví dụ: giá/kg, giá/lít)" },
-                costPerAmount: { type: SchemaType.NUMBER, description: "Chi phí thực tế cho định lượng sử dụng trong món ăn" }
-              },
-              required: ["name", "amount", "unit", "purchasePrice", "costPerAmount"]
-            }
-          },
-          instructions: { type: SchemaType.STRING },
-          totalCost: { type: SchemaType.NUMBER },
-          recommendedPrice: { type: SchemaType.NUMBER }
-        },
-        required: ["title", "ingredients", "instructions", "totalCost", "recommendedPrice"]
-      }
-    }
-  });
-
-  return JSON.parse(result.response.text() || "{}");
+export async function chatWithChef(messages: ChatMessage[], tools?: any, customKey?: string, modelId: string = chefModel) {
+  const config = customKey ? { googleKey: customKey } : {};
+  return await chatWithAI(
+    modelId,
+    messages,
+    systemInstruction,
+    tools,
+    config,
+    recipeResponseSchema
+  );
 }
 
-export async function analyzeOrderImage(base64Image: string, customKey?: string) {
-  const genAI = getAI(customKey);
-  const model = genAI.getGenerativeModel({
-    model: chefModel,
-    systemInstruction: systemInstruction,
-  });
+export const recipeResponseSchema = z.object({
+  text: z.string().describe("Nội dung phản hồi chính bằng Markdown"),
+  suggestions: z.array(z.object({
+    label: z.string(),
+    action: z.string()
+  })),
+  recipe: z.optional(z.object({
+    title: z.string(),
+    ingredients: z.array(z.object({
+      name: z.string(),
+      amount: z.string(),
+      unit: z.string(),
+      purchasePrice: z.number(),
+      costPerAmount: z.number()
+    })),
+    instructions: z.string(),
+    totalCost: z.number(),
+    recommendedPrice: z.number(),
+    image: z.optional(z.string())
+  })),
+  photos: z.optional(z.array(z.object({
+    url: z.string(),
+    filename: z.string()
+  })))
+});
 
-  const result = await model.generateContent({
-    contents: [
+export async function generateRecipe(theme: string, config?: any, modelId: string = chefModel) {
+  return await chatWithAI(
+    modelId,
+    [{ role: 'user', parts: [{ text: `Tạo một công thức nấu ăn chuyên nghiệp cho chủ đề: ${theme}. Bao gồm tiêu đề, nguyên liệu (với chi phí ước tính trên mỗi đơn vị), và hướng dẫn thực hiện. Trả về kết quả bằng tiếng Việt.` }] }],
+    systemInstruction,
+    undefined,
+    config,
+    recipeResponseSchema
+  );
+}
+
+export async function analyzeOrderImage(base64Image: string, config?: any, modelId: string = chefModel) {
+  return await chatWithAI(
+    modelId,
+    [
       { 
         role: 'user', 
         parts: [
@@ -159,29 +126,42 @@ export async function analyzeOrderImage(base64Image: string, customKey?: string)
         ] 
       }
     ],
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          items: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                name: { type: SchemaType.STRING },
-                quantity: { type: SchemaType.STRING }
-              }
-            }
-          },
-          summary: { type: SchemaType.STRING }
-        },
-        required: ["items", "summary"]
-      }
-    }
-  });
+    systemInstruction,
+    undefined,
+    config,
+    z.object({
+      items: z.array(z.object({ name: z.string(), quantity: z.string() })),
+      summary: z.string()
+    })
+  );
+}
 
-  return JSON.parse(result.response.text() || "{}");
+export async function analyzeMenuImage(base64Image: string, config?: any, modelId: string = chefModel) {
+  return await chatWithAI(
+    modelId,
+    [
+      { 
+        role: 'user', 
+        parts: [
+          { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
+          { text: "Hãy phân tích hình ảnh thực đơn (menu) này. Trích xuất danh sách các món ăn, mô tả (nếu có) và giá bán. Nếu thông tin nào không rõ ràng hoặc thiếu (ví dụ: định lượng, nguyên liệu chính), hãy tạo danh sách các câu hỏi để hỏi lại người dùng. Trả về kết quả bằng tiếng Việt dưới dạng JSON." }
+        ] 
+      }
+    ],
+    systemInstruction,
+    undefined,
+    config,
+    z.object({
+      dishes: z.array(z.object({
+        title: z.string(),
+        description: z.string().optional(),
+        price: z.number(),
+        potentialIngredients: z.array(z.string()).optional()
+      })),
+      clarifyingQuestions: z.array(z.string()),
+      summary: z.string()
+    })
+  );
 }
 
 export interface ChatPart {
@@ -195,113 +175,6 @@ export interface ChatPart {
 export interface ChatMessage {
   role: 'user' | 'model';
   parts: ChatPart[];
-}
-
-export async function chatWithChef(messages: ChatMessage[], tools?: any[], customKey?: string) {
-  const genAI = getAI(customKey);
-  const model = genAI.getGenerativeModel({
-    model: chefModel,
-    systemInstruction: systemInstruction,
-  });
-
-  // Ensure the first message is from user and roles alternate
-  let contents = messages.map(m => ({
-    role: m.role,
-    parts: m.parts.map(p => {
-      if (p.inlineData) {
-        return {
-          inlineData: {
-            data: p.inlineData.data,
-            mimeType: p.inlineData.mimeType
-          }
-        } as any;
-      }
-      return { text: p.text || "" } as any;
-    })
-  }));
-
-  const firstUserIndex = contents.findIndex(c => c.role === 'user');
-  if (firstUserIndex > 0) {
-    contents = contents.slice(firstUserIndex);
-  } else if (firstUserIndex === -1) {
-    return { text: "Vui lòng nhập tin nhắn của bạn.", suggestions: [] };
-  }
-
-  const result = await model.generateContent({
-    contents: contents as any,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          text: { type: SchemaType.STRING, description: "Nội dung phản hồi chính bằng Markdown" },
-          suggestions: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                label: { type: SchemaType.STRING, description: "Nhãn hiển thị cho người dùng" },
-                action: { type: SchemaType.STRING, description: "Hành động (ví dụ: generate_recipe, analyze_cost, find_supplier)" }
-              },
-              required: ["label", "action"]
-            }
-          },
-          recipe: {
-            type: SchemaType.OBJECT,
-            properties: {
-              title: { type: SchemaType.STRING },
-              ingredients: {
-                type: SchemaType.ARRAY,
-                items: {
-                  type: SchemaType.OBJECT,
-                  properties: {
-                    name: { type: SchemaType.STRING },
-                    amount: { type: SchemaType.STRING },
-                    unit: { type: SchemaType.STRING },
-                    purchasePrice: { type: SchemaType.NUMBER },
-                    costPerAmount: { type: SchemaType.NUMBER }
-                  },
-                  required: ["name", "amount", "unit", "purchasePrice", "costPerAmount"]
-                }
-              },
-              instructions: { type: SchemaType.STRING },
-              totalCost: { type: SchemaType.NUMBER },
-              recommendedPrice: { type: SchemaType.NUMBER },
-              image: { type: SchemaType.STRING, description: "URL hình ảnh món ăn minh họa (nếu có)" }
-            },
-            description: "Dữ liệu công thức có cấu trúc nếu phản hồi chứa công thức"
-          },
-          photos: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                url: { type: SchemaType.STRING },
-                filename: { type: SchemaType.STRING }
-              },
-              required: ["url", "filename"]
-            },
-            description: "Danh sách hình ảnh từ Google Photos nếu có"
-          }
-        },
-        required: ["text", "suggestions"]
-      }
-    } as any,
-    tools: tools ? [{ functionDeclarations: tools }] : undefined,
-  } as any);
-
-  const response = result.response;
-  if (response.functionCalls()) {
-    return { functionCalls: response.functionCalls() };
-  }
-  
-  try {
-    const text = response.text();
-    return JSON.parse(text || "{}");
-  } catch (e) {
-    const text = response.text();
-    return { text: text || "", suggestions: [] };
-  }
 }
 
 export const creativeAgentInstruction = `
@@ -329,50 +202,16 @@ Nhiệm vụ của bạn là hỗ trợ người dùng trong các mảng sau:
 - Tất cả câu trả lời bằng tiếng Việt.
 `;
 
-export async function chatWithCreativeAgent(messages: ChatMessage[], customKey?: string) {
-  const genAI = getAI(customKey);
-  const model = genAI.getGenerativeModel({
-    model: chefModel,
-    systemInstruction: creativeAgentInstruction,
-  });
-
-  // Ensure the first message is from user and roles alternate
-  let contents = messages.map(m => ({
-    role: m.role,
-    parts: m.parts.map(p => ({ text: p.text || "" }))
-  }));
-
-  const firstUserIndex = contents.findIndex(c => c.role === 'user');
-  if (firstUserIndex > 0) {
-    contents = contents.slice(firstUserIndex);
-  } else if (firstUserIndex === -1) {
-    return { text: "Vui lòng nhập tin nhắn của bạn.", suggestions: [] };
-  }
-
-  const result = await model.generateContent({
-    contents: contents as any,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: SchemaType.OBJECT,
-        properties: {
-          text: { type: SchemaType.STRING },
-          suggestions: {
-            type: SchemaType.ARRAY,
-            items: {
-              type: SchemaType.OBJECT,
-              properties: {
-                label: { type: SchemaType.STRING },
-                action: { type: SchemaType.STRING }
-              },
-              required: ["label", "action"]
-            }
-          }
-        },
-        required: ["text", "suggestions"]
-      }
-    }
-  });
-
-  return JSON.parse(result.response.text() || "{}");
+export async function chatWithCreativeAgent(messages: ChatMessage[], config?: any, modelId: string = chefModel) {
+  return await chatWithAI(
+    modelId,
+    messages,
+    creativeAgentInstruction,
+    undefined,
+    config,
+    z.object({
+      text: z.string(),
+      suggestions: z.array(z.object({ label: z.string(), action: z.string() }))
+    })
+  );
 }

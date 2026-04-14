@@ -1,7 +1,7 @@
 import { signOut, auth, User, db, doc, updateDoc, deleteDoc, query, collection, where, getDocs } from '../lib/firebase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, Database, Download, Cloud, Check, AlertCircle, Loader2, X, Palette, MessageSquare, Trash2, Sparkles } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, Database, Download, Cloud, Check, AlertCircle, Loader2, X, Palette, MessageSquare, Trash2, Sparkles, Key } from 'lucide-react';
 import { LocalDb } from '../lib/localDb';
 import { cn } from '../lib/utils';
 import { AVAILABLE_MODELS, chatWithAI } from '../lib/ai';
@@ -16,7 +16,7 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [showBackupSuccess, setShowBackupSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'style' | 'model' | 'status' | 'system'>('style');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'style' | 'model' | 'keys' | 'status' | 'system'>('style');
   const [apiStatus, setApiStatus] = useState<Record<string, { status: 'checking' | 'ok' | 'error', message?: string }>>({});
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
@@ -165,22 +165,22 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
 
   const colorOptions = {
     user: [
-      { name: 'Đen Đá', class: 'bg-stone-900' },
+      { name: 'Đen Đá', class: 'bg-neutral-900' },
       { name: 'Cam Cháy', class: 'bg-orange-600' },
       { name: 'Xanh Rêu', class: 'bg-emerald-800' },
       { name: 'Xanh Biển', class: 'bg-blue-700' },
     ],
     ai: [
       { name: 'Trắng Sữa', class: 'bg-white' },
-      { name: 'Xám Nhạt', class: 'bg-stone-100' },
+      { name: 'Xám Nhạt', class: 'bg-neutral-100' },
       { name: 'Vàng Kem', class: 'bg-amber-50' },
       { name: 'Xanh Bạc Hà', class: 'bg-emerald-50' },
     ],
     bg: [
-      { name: 'Mặc định', class: 'bg-stone-50' },
+      { name: 'Mặc định', class: 'bg-neutral-50' },
       { name: 'Trắng Tinh', class: 'bg-white' },
       { name: 'Gỗ Nhạt', class: 'bg-orange-50/30' },
-      { name: 'Xám Xi Măng', class: 'bg-stone-200/50' },
+      { name: 'Xám Xi Măng', class: 'bg-neutral-200/50' },
     ]
   };
 
@@ -189,46 +189,62 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="p-6 space-y-8 pb-12"
+      className="p-6 space-y-10 pb-24 no-scrollbar"
     >
-      <header className="text-center space-y-4">
+      <header className="text-center space-y-6 pt-4">
         <div className="relative inline-block">
+          <div className="absolute inset-0 bg-neutral-900/5 blur-3xl rounded-full scale-150 opacity-50" />
           {user.photoURL ? (
-            <img src={user.photoURL} alt={user.displayName || ''} className="w-24 h-24 rounded-[2rem] border-4 border-white shadow-xl mx-auto" referrerPolicy="no-referrer" />
+            <img src={user.photoURL} alt={user.displayName || ''} className="w-28 h-28 rounded-[2rem] border-4 border-white shadow-2xl mx-auto relative z-10" referrerPolicy="no-referrer" />
           ) : (
-            <div className="w-24 h-24 bg-orange-100 rounded-[2rem] flex items-center justify-center mx-auto border-4 border-white shadow-xl">
-              <UserIcon className="w-10 h-10 text-orange-600" />
+            <div className="w-28 h-28 bg-neutral-100 rounded-[2rem] flex items-center justify-center mx-auto border-4 border-white shadow-2xl relative z-10">
+              <UserIcon className="w-12 h-12 text-neutral-400" />
             </div>
           )}
-          <div className="absolute -bottom-2 -right-2 bg-green-500 w-6 h-6 rounded-full border-4 border-white shadow-sm" />
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="absolute -bottom-2 -right-2 bg-neutral-900 w-8 h-8 rounded-xl border-4 border-white shadow-lg z-20 flex items-center justify-center"
+          >
+            <Check className="w-3.5 h-3.5 text-white" />
+          </motion.div>
         </div>
-        <div>
-          <h2 className="text-2xl font-bold text-stone-900">{user.displayName}</h2>
-          <p className="text-stone-500 text-sm">{user.email}</p>
+        <div className="space-y-1">
+          <h2 className="text-3xl font-display font-bold text-neutral-900 tracking-tight">{user.displayName}</h2>
+          <p className="text-neutral-400 text-sm font-medium">{user.email}</p>
         </div>
-        <div className="inline-block bg-stone-900 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">
-          Bếp trưởng điều hành
+        <div className="inline-flex items-center gap-2 bg-neutral-900 text-white px-5 py-2 rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] shadow-xl">
+          <Shield className="w-3.5 h-3.5 text-neutral-400" />
+          Executive Chef
         </div>
       </header>
 
       {/* Settings Section */}
-      <section className="space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 px-2">Cấu hình hệ thống</h3>
-        <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
+      <section className="space-y-6">
+        <div className="flex items-center gap-3 text-neutral-900 px-1">
+          <div className="w-8 h-8 bg-neutral-100 rounded-xl flex items-center justify-center">
+            <Settings className="w-4 h-4" />
+          </div>
+          <h3 className="font-display font-bold text-xl">Cấu hình hệ thống</h3>
+        </div>
+        
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition-colors border-b border-stone-50 group"
+            className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all group"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
-                <Settings className="w-5 h-5 text-orange-600" />
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-neutral-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">
+                <Settings className="w-6 h-6 text-neutral-900" />
               </div>
-              <div className="text-left">
-                <span className="font-semibold text-stone-800 block">Cài đặt & API</span>
-                <span className="text-[10px] text-stone-400">Giao diện, Model AI và API Keys</span>
+              <div className="text-left space-y-0.5">
+                <span className="font-bold text-neutral-900 block text-lg">Cài đặt & API</span>
+                <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest">Giao diện, Model AI và API Keys</span>
               </div>
             </div>
-            <ChevronRight className={cn("w-5 h-5 text-stone-300 transition-transform", showSettings && "rotate-90")} />
+            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center bg-neutral-50 text-neutral-400 transition-all group-hover:bg-neutral-900 group-hover:text-white", showSettings && "rotate-90 bg-neutral-900 text-white")}>
+              <ChevronRight className="w-5 h-5" />
+            </div>
           </button>
 
           <AnimatePresence>
@@ -237,53 +253,53 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="border-t border-stone-50 bg-stone-50/30 overflow-hidden"
+                className="border-t border-neutral-50 bg-neutral-50/30 overflow-hidden"
               >
-                <div className="p-6 space-y-6">
-                  <div className="flex p-1 bg-stone-100 rounded-xl">
-                    {['style', 'model', 'status', 'system'].map((tab) => (
+                <div className="p-8 space-y-8">
+                  <div className="flex p-1.5 bg-neutral-100 rounded-xl overflow-x-auto no-scrollbar">
+                    {['style', 'model', 'keys', 'status', 'system'].map((tab) => (
                       <button 
                         key={tab}
                         onClick={() => setActiveSettingsTab(tab as any)}
                         className={cn(
-                          "flex-1 py-2 text-[9px] font-bold uppercase tracking-wider transition-all rounded-lg",
-                          activeSettingsTab === tab ? "bg-white text-orange-600 shadow-sm" : "text-stone-400 hover:text-stone-600"
+                          "flex-1 py-3 px-4 text-[10px] font-bold uppercase tracking-widest transition-all rounded-lg whitespace-nowrap",
+                          activeSettingsTab === tab ? "bg-white text-neutral-900 shadow-md" : "text-neutral-400 hover:text-neutral-600"
                         )}
                       >
-                        {tab === 'style' ? 'Giao diện' : tab === 'model' ? 'Mô hình' : tab === 'status' ? 'Trạng thái' : 'Hệ thống'}
+                        {tab === 'style' ? 'Giao diện' : tab === 'model' ? 'Mô hình' : tab === 'keys' ? 'API Keys' : tab === 'status' ? 'Trạng thái' : 'Hệ thống'}
                       </button>
                     ))}
                   </div>
 
                   {activeSettingsTab === 'style' && (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Màu tin nhắn của bạn</label>
-                        <div className="flex flex-wrap gap-2">
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Màu tin nhắn của bạn</label>
+                        <div className="flex flex-wrap gap-4">
                           {colorOptions.user.map(color => (
                             <button
                               key={color.class}
                               onClick={() => updatePreference('chatUserBubbleColor', color.class)}
                               className={cn(
-                                "w-8 h-8 rounded-full border-2 transition-all",
+                                "w-10 h-10 rounded-xl border-4 transition-all shadow-sm",
                                 color.class,
-                                preferences.chatUserBubbleColor === color.class ? "border-orange-500 scale-110" : "border-transparent"
+                                preferences.chatUserBubbleColor === color.class ? "border-neutral-900 scale-110 shadow-xl" : "border-white"
                               )}
                             />
                           ))}
                         </div>
                       </div>
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Màu tin nhắn AI</label>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Màu tin nhắn AI</label>
+                        <div className="flex flex-wrap gap-4">
                           {colorOptions.ai.map(color => (
                             <button
                               key={color.class}
                               onClick={() => updatePreference('chatAiBubbleColor', color.class)}
                               className={cn(
-                                "w-8 h-8 rounded-full border-2 transition-all",
+                                "w-10 h-10 rounded-xl border-4 transition-all shadow-sm",
                                 color.class,
-                                preferences.chatAiBubbleColor === color.class ? "border-orange-500 scale-110" : "border-transparent"
+                                preferences.chatAiBubbleColor === color.class ? "border-neutral-900 scale-110 shadow-xl" : "border-white"
                               )}
                             />
                           ))}
@@ -293,115 +309,128 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                   )}
 
                   {activeSettingsTab === 'model' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                      <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="grid grid-cols-1 gap-4">
                         {AVAILABLE_MODELS.map(model => (
                           <button
                             key={model.id}
                             onClick={() => updatePreference('selectedModelId', model.id)}
                             className={cn(
-                              "p-4 rounded-xl border-2 text-left transition-all relative",
+                              "p-5 rounded-2xl border-2 text-left transition-all relative group",
                               preferences.selectedModelId === model.id 
-                                ? "border-orange-500 bg-white shadow-sm" 
-                                : "border-stone-100 bg-white/50"
+                                ? "border-neutral-900 bg-white shadow-xl" 
+                                : "border-neutral-100 bg-white/50 hover:border-neutral-200"
                             )}
                           >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-xs text-stone-900">{model.name}</span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-bold text-sm text-neutral-900">{model.name}</span>
                               <span className={cn(
-                                "text-[8px] px-1.5 py-0.5 rounded font-bold uppercase",
-                                model.provider === 'google' ? "bg-blue-100 text-blue-600" : 
-                                model.provider === 'openai' ? "bg-green-100 text-green-600" :
-                                model.provider === 'openrouter' ? "bg-purple-100 text-purple-600" :
-                                model.provider === 'nvidia' ? "bg-emerald-100 text-emerald-600" :
-                                model.provider === 'groq' ? "bg-orange-100 text-orange-600" :
-                                "bg-stone-100 text-stone-600"
+                                "text-[8px] px-2 py-1 rounded-lg font-bold uppercase tracking-widest",
+                                model.provider === 'google' ? "bg-blue-50 text-blue-600" : 
+                                model.provider === 'openai' ? "bg-green-50 text-green-600" :
+                                model.provider === 'anthropic' ? "bg-stone-50 text-stone-600" :
+                                model.provider === 'openrouter' ? "bg-purple-50 text-purple-600" :
+                                model.provider === 'nvidia' ? "bg-emerald-50 text-emerald-600" :
+                                model.provider === 'groq' ? "bg-orange-50 text-orange-600" :
+                                "bg-neutral-50 text-neutral-600"
                               )}>
                                 {model.provider}
                               </span>
                             </div>
-                            <p className="text-[10px] text-stone-500 leading-snug">{model.description}</p>
+                            <p className="text-[10px] text-neutral-500 leading-relaxed font-medium">{model.description}</p>
+                            {preferences.selectedModelId === model.id && (
+                              <div className="absolute top-2 right-2">
+                                <Check className="w-4 h-4 text-neutral-900" />
+                              </div>
+                            )}
                           </button>
                         ))}
                       </div>
+                    </div>
+                  )}
 
-                      <div className="space-y-4 pt-4 border-t border-stone-100">
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Google Gemini API Key</label>
-                          <input
-                            type="password"
-                            value={preferences.googleKey || ''}
-                            onChange={(e) => updatePreference('googleKey', e.target.value)}
-                            placeholder="AIza..."
-                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
+                  {activeSettingsTab === 'keys' && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="bg-neutral-900 p-6 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-3 text-white">
+                          <Key className="w-5 h-5 text-neutral-400" />
+                          <h4 className="font-bold text-sm">Quản lý API Keys</h4>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">OpenAI API Key</label>
-                          <input
-                            type="password"
-                            value={preferences.openaiKey || ''}
-                            onChange={(e) => updatePreference('openaiKey', e.target.value)}
-                            placeholder="sk-..."
-                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">OpenRouter API Key (Free Models)</label>
-                          <input
-                            type="password"
-                            value={preferences.openrouterKey || ''}
-                            onChange={(e) => updatePreference('openrouterKey', e.target.value)}
-                            placeholder="sk-or-..."
-                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">NVIDIA API Key (Free Models)</label>
-                          <input
-                            type="password"
-                            value={preferences.nvidiaKey || ''}
-                            onChange={(e) => updatePreference('nvidiaKey', e.target.value)}
-                            placeholder="nvapi-..."
-                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Groq API Key</label>
-                          <input
-                            type="password"
-                            value={preferences.groqKey || ''}
-                            onChange={(e) => updatePreference('groqKey', e.target.value)}
-                            placeholder="gsk_..."
-                            className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 outline-none transition-all"
-                          />
-                        </div>
+                        <p className="text-[10px] text-neutral-400 leading-relaxed font-medium">
+                          Nhập API Key của bạn để sử dụng các mô hình AI tương ứng. Dữ liệu được lưu trữ an toàn trong tài khoản của bạn.
+                        </p>
+                      </div>
+
+                      <div className="space-y-6">
+                        {[
+                          { key: 'googleKey', label: 'Google Gemini API Key', placeholder: 'AIza...', icon: 'google' },
+                          { key: 'openaiKey', label: 'OpenAI API Key', placeholder: 'sk-...', icon: 'openai' },
+                          { key: 'anthropicKey', label: 'Anthropic API Key', placeholder: 'sk-ant-...', icon: 'anthropic' },
+                          { key: 'openrouterKey', label: 'OpenRouter API Key', placeholder: 'sk-or-...', icon: 'openrouter' },
+                          { key: 'nvidiaKey', label: 'NVIDIA API Key', placeholder: 'nvapi-...', icon: 'nvidia' },
+                          { key: 'groqKey', label: 'Groq API Key', placeholder: 'gsk_...', icon: 'groq' }
+                        ].map(field => (
+                          <div key={field.key} className="space-y-2.5">
+                            <div className="flex items-center justify-between px-1">
+                              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">{field.label}</label>
+                              <span className={cn(
+                                "text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md",
+                                field.icon === 'google' ? "text-blue-600 bg-blue-50" :
+                                field.icon === 'openai' ? "text-green-600 bg-green-50" :
+                                field.icon === 'anthropic' ? "text-stone-600 bg-stone-50" :
+                                "text-neutral-400 bg-neutral-50"
+                              )}>
+                                {field.icon}
+                              </span>
+                            </div>
+                            <div className="relative group">
+                              <input
+                                type="password"
+                                value={preferences[field.key] || ''}
+                                onChange={(e) => updatePreference(field.key, e.target.value)}
+                                placeholder={field.placeholder}
+                                className="w-full px-6 py-4 bg-white border border-neutral-100 rounded-xl text-xs font-medium focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm pr-12"
+                              />
+                              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                {preferences[field.key] ? (
+                                  <Check className="w-4 h-4 text-green-500" />
+                                ) : (
+                                  <div className="w-1.5 h-1.5 rounded-full bg-neutral-200" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
 
                   {activeSettingsTab === 'status' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
                       <button 
                         onClick={checkApiStatus}
-                        className="w-full py-2 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2"
+                        className="w-full py-4 bg-neutral-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
                       >
-                        <Loader2 className={cn("w-3 h-3", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
+                        <Loader2 className={cn("w-4 h-4", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
                         Kiểm tra trạng thái
                       </button>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {AVAILABLE_MODELS.map(model => (
-                          <div key={model.id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-stone-100">
-                            <div className="flex items-center gap-3">
+                          <div key={model.id} className="flex items-center justify-between p-5 bg-white rounded-xl border border-neutral-100 shadow-sm">
+                            <div className="flex items-center gap-4">
                               <div className={cn(
-                                "w-1.5 h-1.5 rounded-full",
+                                "w-2.5 h-2.5 rounded-full shadow-sm",
                                 apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
-                                apiStatus[model.id]?.status === 'error' ? "bg-red-500" : "bg-stone-300"
+                                apiStatus[model.id]?.status === 'error' ? "bg-red-500" : "bg-neutral-200"
                               )} />
-                              <span className="text-xs font-medium text-stone-700">{model.name}</span>
+                              <span className="text-sm font-bold text-neutral-800">{model.name}</span>
                             </div>
-                            <span className="text-[9px] font-bold uppercase text-stone-400">
-                              {apiStatus[model.id]?.status === 'ok' ? 'Sẵn sàng' : apiStatus[model.id]?.status === 'error' ? 'Lỗi' : '...'}
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg",
+                              apiStatus[model.id]?.status === 'ok' ? "text-green-600 bg-green-50" : 
+                              apiStatus[model.id]?.status === 'error' ? "text-red-600 bg-red-50" : "text-neutral-400 bg-neutral-50"
+                            )}>
+                              {apiStatus[model.id]?.status === 'ok' ? 'Sẵn sàng' : apiStatus[model.id]?.status === 'error' ? 'Lỗi' : 'Chờ kiểm tra'}
                             </span>
                           </div>
                         ))}
@@ -410,18 +439,25 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                   )}
 
                   {activeSettingsTab === 'system' && (
-                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                      <div className="space-y-2">
-                        <p className="text-[10px] text-stone-500 italic">Cẩn thận: Các hành động này không thể hoàn tác.</p>
+                    <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 space-y-3">
+                        <div className="flex items-center gap-3 text-orange-800">
+                          <AlertCircle className="w-5 h-5" />
+                          <h4 className="font-bold text-sm">Vùng nguy hiểm</h4>
+                        </div>
+                        <p className="text-[11px] text-orange-700 leading-relaxed font-medium">Các hành động này sẽ xóa vĩnh viễn dữ liệu của bạn khỏi hệ thống. Hãy chắc chắn bạn đã sao lưu trước khi thực hiện.</p>
+                      </div>
+                      
+                      <div className="space-y-3">
                         <button
                           onClick={() => setConfirmClearHistory(true)}
-                          className="w-full py-3 bg-orange-50 text-orange-600 rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                          className="w-full py-4 bg-white text-orange-600 border border-orange-100 rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-orange-50 transition-all active:scale-95 shadow-sm"
                         >
                           Xóa lịch sử chat
                         </button>
                         <button
                           onClick={() => setConfirmClearAll(true)}
-                          className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                          className="w-full py-4 bg-white text-red-600 border border-red-100 rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-red-50 transition-all active:scale-95 shadow-sm"
                         >
                           Xóa toàn bộ dữ liệu
                         </button>
@@ -429,22 +465,30 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
 
                       <AnimatePresence>
                         {confirmClearHistory && (
-                          <div className="p-4 bg-orange-100 rounded-2xl space-y-3">
-                            <p className="text-[10px] font-bold text-orange-800">Xác nhận xóa lịch sử chat?</p>
-                            <div className="flex gap-2">
-                              <button onClick={clearChatHistory} className="flex-1 py-2 bg-orange-600 text-white rounded-lg text-[10px] font-bold">XÓA</button>
-                              <button onClick={() => setConfirmClearHistory(false)} className="flex-1 py-2 bg-white text-stone-500 rounded-lg text-[10px] font-bold">HỦY</button>
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="p-6 bg-neutral-900 text-white rounded-2xl space-y-4 shadow-2xl"
+                          >
+                            <p className="text-xs font-bold text-center">Xác nhận xóa lịch sử chat?</p>
+                            <div className="flex gap-3">
+                              <button onClick={clearChatHistory} className="flex-1 py-3 bg-orange-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest">Xác nhận</button>
+                              <button onClick={() => setConfirmClearHistory(false)} className="flex-1 py-3 bg-white/10 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest">Hủy</button>
                             </div>
-                          </div>
+                          </motion.div>
                         )}
                         {confirmClearAll && (
-                          <div className="p-4 bg-red-100 rounded-2xl space-y-3">
-                            <p className="text-[10px] font-bold text-red-800">Xác nhận xóa TẤT CẢ dữ liệu?</p>
-                            <div className="flex gap-2">
-                              <button onClick={clearAllData} className="flex-1 py-2 bg-red-600 text-white rounded-lg text-[10px] font-bold">XÓA HẾT</button>
-                              <button onClick={() => setConfirmClearAll(false)} className="flex-1 py-2 bg-white text-stone-500 rounded-lg text-[10px] font-bold">HỦY</button>
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="p-6 bg-red-900 text-white rounded-2xl space-y-4 shadow-2xl"
+                          >
+                            <p className="text-xs font-bold text-center">Xác nhận xóa TẤT CẢ dữ liệu?</p>
+                            <div className="flex gap-3">
+                              <button onClick={clearAllData} className="flex-1 py-3 bg-white text-red-900 rounded-xl text-[10px] font-bold uppercase tracking-widest">Xóa hết</button>
+                              <button onClick={() => setConfirmClearAll(false)} className="flex-1 py-3 bg-white/10 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest">Hủy</button>
                             </div>
-                          </div>
+                          </motion.div>
                         )}
                       </AnimatePresence>
                     </div>
@@ -457,90 +501,96 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
       </section>
 
       {/* Backup & Data Knowledge Section */}
-      <section className="space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 px-2">Dữ liệu & NotebookLM</h3>
-        <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
+      <section className="space-y-6">
+        <div className="flex items-center gap-3 text-neutral-900 px-1">
+          <div className="w-8 h-8 bg-neutral-100 rounded-xl flex items-center justify-center">
+            <Database className="w-4 h-4" />
+          </div>
+          <h3 className="font-display font-bold text-xl">Dữ liệu & Knowledge</h3>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
           <button
             onClick={handleExport}
             disabled={isExporting}
-            className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition-colors border-b border-stone-50 group"
+            className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all border-b border-neutral-50 group"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
-                <Download className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">
+                <Download className="w-6 h-6 text-blue-600" />
               </div>
-              <div className="text-left">
-                <span className="font-semibold text-stone-800 block">Xuất dữ liệu Knowledge</span>
-                <span className="text-[10px] text-stone-400">Dùng cho NotebookLM (JSON/Markdown)</span>
+              <div className="text-left space-y-0.5">
+                <span className="font-bold text-neutral-900 block text-lg">Xuất dữ liệu Knowledge</span>
+                <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest">Dùng cho NotebookLM (JSON/Markdown)</span>
               </div>
             </div>
-            {isExporting ? <Loader2 className="w-5 h-5 text-stone-300 animate-spin" /> : <ChevronRight className="w-5 h-5 text-stone-300" />}
+            {isExporting ? <Loader2 className="w-5 h-5 text-neutral-300 animate-spin" /> : <ChevronRight className="w-5 h-5 text-neutral-300" />}
           </button>
 
           <button
             onClick={handleCloudBackup}
             disabled={isExporting}
-            className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition-colors group"
+            className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all group"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
-                <Cloud className="w-5 h-5 text-green-600" />
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">
+                <Cloud className="w-6 h-6 text-green-600" />
               </div>
-              <div className="text-left">
-                <span className="font-semibold text-stone-800 block">Sao lưu Google Drive</span>
-                <span className="text-[10px] text-stone-400">Tự động push định kỳ 24h</span>
+              <div className="text-left space-y-0.5">
+                <span className="font-bold text-neutral-900 block text-lg">Sao lưu Google Drive</span>
+                <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest">Tự động push định kỳ 24h</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <AnimatePresence>
                 {showBackupSuccess && (
                   <motion.span
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
-                    className="text-[10px] text-green-600 font-bold"
+                    className="text-[10px] text-green-600 font-bold uppercase tracking-widest"
                   >
-                    Thành công!
+                    Đã xong
                   </motion.span>
                 )}
               </AnimatePresence>
-              <ChevronRight className="w-5 h-5 text-stone-300" />
+              <ChevronRight className="w-5 h-5 text-neutral-300" />
             </div>
           </button>
         </div>
       </section>
 
-      <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
-        <button className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition-colors border-b border-stone-50 group">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
-              <Shield className="w-5 h-5 text-stone-600" />
+      <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+        <button className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all border-b border-neutral-100 group">
+          <div className="flex items-center gap-5">
+            <div className="w-12 h-12 bg-neutral-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">
+              <Shield className="w-6 h-6 text-neutral-600" />
             </div>
-            <span className="font-semibold text-stone-800">Quyền riêng tư & Bảo mật</span>
+            <span className="font-bold text-neutral-900 text-lg">Quyền riêng tư & Bảo mật</span>
           </div>
-          <ChevronRight className="w-5 h-5 text-stone-300" />
+          <ChevronRight className="w-5 h-5 text-neutral-300" />
         </button>
-        <button className="w-full p-5 flex items-center justify-between hover:bg-stone-50 transition-colors group">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-colors">
-              <HelpCircle className="w-5 h-5 text-stone-600" />
+        <button className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all group">
+          <div className="flex items-center gap-5">
+            <div className="w-12 h-12 bg-neutral-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">
+              <HelpCircle className="w-6 h-6 text-neutral-600" />
             </div>
-            <span className="font-semibold text-stone-800">Trung tâm hỗ trợ</span>
+            <span className="font-bold text-neutral-900 text-lg">Trung tâm hỗ trợ</span>
           </div>
-          <ChevronRight className="w-5 h-5 text-stone-300" />
+          <ChevronRight className="w-5 h-5 text-neutral-300" />
         </button>
       </div>
 
       <button
         onClick={handleLogout}
-        className="w-full bg-red-50 text-red-600 font-bold py-5 rounded-[2rem] flex items-center justify-center gap-3 hover:bg-red-100 transition-all active:scale-95"
+        className="w-full bg-red-50 text-red-600 font-bold py-6 rounded-xl flex items-center justify-center gap-4 hover:bg-red-100 transition-all active:scale-95 shadow-sm"
       >
-        <LogOut className="w-5 h-5" />
-        Đăng xuất
+        <LogOut className="w-6 h-6" />
+        <span className="text-lg">Đăng xuất</span>
       </button>
 
-      <footer className="text-center pt-8">
-        <p className="text-[10px] text-stone-400 uppercase tracking-widest">SousChef AI v1.0.0</p>
+      <footer className="text-center pt-8 pb-4">
+        <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-[0.3em]">SousChef Executive AI v1.0.0</p>
       </footer>
     </motion.div>
   );

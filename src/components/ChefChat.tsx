@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc, deleteDoc, setDoc, handleFirestoreError, OperationType, googleProvider, signInWithPopup } from '../lib/firebase';
-import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool, crawlRecipeTool } from '../lib/gemini';
-import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel } from '../lib/ai';
+import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool, crawlRecipeTool, recipeResponseSchema } from '../lib/gemini';
+import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel, multiAgentChat } from '../lib/ai';
+import { getMemories, formatMemoriesForPrompt, extractMemoriesFromChat, Memory } from '../lib/memory';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
+import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle, Pencil, ListChecks } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn, validateRecipe } from '../lib/utils';
-import { DollarSign, Clock, ListChecks, Utensils } from 'lucide-react';
+import { DollarSign, Clock, Utensils } from 'lucide-react';
 
 interface RecipeData {
   title: string;
@@ -17,17 +18,29 @@ interface RecipeData {
   image?: string;
 }
 
-function RecipeCard({ recipe, onSave, isSaving }: { recipe: RecipeData, onSave?: () => void, isSaving?: boolean }) {
+function RecipeCard({ 
+  recipe, 
+  onSave, 
+  isSaving,
+  onSaveImage,
+  isSavingImage
+}: { 
+  recipe: RecipeData, 
+  onSave?: () => void, 
+  isSaving?: boolean,
+  onSaveImage?: (e: React.MouseEvent) => void,
+  isSavingImage?: boolean
+}) {
   if (!recipe) return null;
 
   return (
     <motion.div 
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
       onClick={onSave}
       className={cn(
-        "mt-4 bg-white border rounded-2xl overflow-hidden shadow-sm cursor-pointer transition-all group",
-        isSaving ? "border-orange-500 ring-1 ring-orange-500" : "border-stone-200 hover:border-orange-300 hover:shadow-md"
+        "mt-4 bg-white border rounded-2xl overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.02)] cursor-pointer transition-all group",
+        isSaving ? "border-neutral-900 ring-1 ring-neutral-900/5" : "border-neutral-100 hover:border-neutral-200"
       )}
     >
       {recipe.image && (
@@ -35,87 +48,73 @@ function RecipeCard({ recipe, onSave, isSaving }: { recipe: RecipeData, onSave?:
           <img 
             src={recipe.image} 
             alt={recipe.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-            <h3 className="text-white font-bold text-lg drop-shadow-md">
-              {recipe.title || "Công thức không tên"}
-            </h3>
+          <div className="absolute top-3 right-3">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSaveImage?.(e);
+              }}
+              className={cn(
+                "p-2 rounded-xl backdrop-blur-md transition-all shadow-lg",
+                isSavingImage 
+                  ? "bg-green-500 text-white" 
+                  : "bg-white/80 text-neutral-900 opacity-0 group-hover:opacity-100 hover:bg-white"
+              )}
+            >
+              {isSavingImage ? <Check className="w-4 h-4" /> : <ImageIcon className="w-4 h-4" />}
+            </button>
           </div>
         </div>
       )}
-      <div className={cn(
-        "p-4 text-white flex items-center justify-between transition-colors",
-        recipe.image ? "bg-stone-900/90 backdrop-blur-sm" : (isSaving ? "bg-orange-600" : "bg-stone-900 group-hover:bg-stone-800")
-      )}>
-        {!recipe.image && (
-          <h3 className="font-bold text-lg flex items-center gap-2">
-            <Utensils className="w-5 h-5 text-orange-400" />
+      
+      <div className="p-5 space-y-5">
+        <div className="flex justify-between items-start">
+          <h3 className="font-semibold text-lg text-neutral-900 leading-tight">
             {recipe.title || "Công thức không tên"}
           </h3>
-        )}
-        {recipe.image && <div className="flex items-center gap-2 text-xs font-medium text-stone-300"><Utensils className="w-4 h-4" /> Chi tiết công thức</div>}
-        {isSaving ? (
-          <Check className="w-5 h-5 animate-bounce" />
-        ) : (
-          <Save className="w-5 h-5 text-stone-400 group-hover:text-white transition-colors" />
-        )}
-      </div>
-      
-      <div className="p-4 space-y-4">
+          {!recipe.image && (
+            <div className="p-2 bg-neutral-50 rounded-lg">
+              <Utensils className="w-4 h-4 text-neutral-400" />
+            </div>
+          )}
+        </div>
+
         {recipe.ingredients && recipe.ingredients.length > 0 && (
-          <div>
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-1">
-              <ListChecks className="w-3 h-3" />
-              Nguyên liệu & Chi phí
+          <div className="space-y-2.5">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+              Nguyên liệu
             </h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-stone-100">
-                    <th className="py-2 font-bold text-stone-400">Tên</th>
-                    <th className="py-2 font-bold text-stone-400 text-right">Lượng</th>
-                    <th className="py-2 font-bold text-stone-400 text-right">Giá nhập</th>
-                    <th className="py-2 font-bold text-stone-400 text-right">Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recipe.ingredients.map((ing, i) => (
-                    <tr key={i} className="border-b border-stone-50 last:border-0">
-                      <td className="py-2 text-stone-700 font-medium">{ing.name}</td>
-                      <td className="py-2 text-stone-500 text-right">{ing.amount} {ing.unit}</td>
-                      <td className="py-2 text-stone-400 text-right">${ing.purchasePrice?.toLocaleString()}</td>
-                      <td className="py-2 text-stone-900 font-bold text-right">${ing.costPerAmount?.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="bg-neutral-50 rounded-xl p-3.5 space-y-1.5">
+              {recipe.ingredients.map((ing, i) => (
+                <div key={i} className="flex justify-between items-center text-[11px]">
+                  <span className="text-neutral-600">{ing.name}</span>
+                  <span className="text-neutral-900 font-medium">{ing.amount} {ing.unit}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {recipe.instructions && (
-          <div>
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              Hướng dẫn
-            </h4>
-            <div className="text-xs text-stone-600 leading-relaxed whitespace-pre-wrap">
-              {recipe.instructions}
+        <div className="flex items-center justify-between pt-4 border-t border-neutral-50">
+          <div className="flex gap-5">
+            <div className="flex flex-col">
+              <span className="text-[9px] font-medium text-neutral-400 uppercase">Cost</span>
+              <span className="text-sm font-semibold text-neutral-900">${recipe.totalCost?.toLocaleString()}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] font-medium text-neutral-400 uppercase">Giá bán</span>
+              <span className="text-sm font-semibold text-neutral-900">${recipe.recommendedPrice?.toLocaleString()}</span>
             </div>
           </div>
-        )}
-
-        <div className="pt-4 border-t border-stone-100 flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Tổng chi phí</p>
-            <p className="text-sm font-bold text-stone-900">${recipe.totalCost || 0}</p>
-          </div>
-          <div className="text-right space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Giá đề xuất</p>
-            <p className="text-sm font-bold text-orange-600">${recipe.recommendedPrice || 0}</p>
-          </div>
+          <button className={cn(
+            "p-2.5 rounded-lg transition-all",
+            isSaving ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-400 group-hover:bg-neutral-900 group-hover:text-white"
+          )}>
+            {isSaving ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+          </button>
         </div>
       </div>
     </motion.div>
@@ -136,6 +135,8 @@ interface ChatMessageData {
   fileNames?: string[];
   files?: {data: string, mimeType: string, name: string}[];
   photos?: { url: string; filename: string }[];
+  internalMonologue?: string;
+  proposedActions?: { type: string; data: any; reason: string; approved?: boolean }[];
 }
 
 interface ConversationData {
@@ -156,10 +157,12 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [memories, setMemories] = useState<Memory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
+  const [savingImageUrls, setSavingImageUrls] = useState<Set<string>>(new Set());
   const [selectedFiles, setSelectedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [googleToken, setGoogleToken] = useState<string | null>(null);
@@ -167,10 +170,14 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [isRecipeCrawActive, setIsRecipeCrawActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isProcessingRef = useRef(false);
+
+  const isActuallyTyping = messages.some(m => m.sender === 'user' && (m.status === 'pending' || m.status === 'processing'));
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -195,6 +202,12 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
 
     return () => unsubscribeConv();
   }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    getMemories(auth.currentUser.uid).then(setMemories);
+  }, [activeConversationId]);
 
   useEffect(() => {
     if (!auth.currentUser || !activeConversationId) {
@@ -231,7 +244,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isActuallyTyping]);
 
   const deleteConversation = async (id: string) => {
     if (!auth.currentUser) return;
@@ -252,11 +265,29 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     }
   };
 
+  const updateConversationTitle = async (id: string, newTitle: string) => {
+    if (!auth.currentUser || !newTitle.trim()) {
+      setEditingTitle(false);
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'conversations', id), {
+        title: newTitle,
+        updatedAt: serverTimestamp()
+      });
+      setEditingTitle(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'conversations');
+    }
+  };
+
   const connectGoogle = async () => {
     setIsConnectingGoogle(true);
     try {
-      googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
-      googleProvider.addScope('https://www.googleapis.com/auth/photoslibrary.readonly');
+      if (typeof googleProvider.addScope === 'function') {
+        googleProvider.addScope('https://www.googleapis.com/auth/drive.readonly');
+        googleProvider.addScope('https://www.googleapis.com/auth/photoslibrary.readonly');
+      }
       const result = await signInWithPopup(auth, googleProvider);
       const credential = (result as any)._credential;
       if (credential && credential.accessToken) {
@@ -416,16 +447,6 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       }
       history.push({ role: 'user', parts: currentParts });
 
-      const { systemInstruction } = await import('../lib/gemini');
-      const tools = [crawlRecipeTool, ...(googleToken ? [searchGoogleDriveTool, searchGooglePhotosTool, searchGoogleKeepTool] : [])];
-      
-      // Define fallback chain: Primary -> Gemini Flash -> DeepSeek (OR) -> Llama (Groq)
-      const fallbacks = [
-        'gemini-flash-latest',
-        'openrouter/deepseek/deepseek-chat',
-        'groq/llama-3.3-70b-versatile'
-      ].filter(id => id !== preferences.selectedModelId);
-
       const aiConfig = { 
         openaiKey: preferences.openaiKey, 
         anthropicKey: preferences.anthropicKey, 
@@ -435,150 +456,84 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
         groqKey: preferences.groqKey
       };
 
-      let aiResult;
-      try {
-        aiResult = await chatWithAIWithFallback(
-          preferences.selectedModelId, 
-          history, 
-          systemInstruction,
-          tools,
-          aiConfig,
-          fallbacks
-        );
+      // Fetch context for agents
+      // @ts-ignore
+      const inventorySnap = await getDocs(collection(db, 'inventory'));
+      const inventory = inventorySnap.docs.map((d: any) => d.data());
+      // @ts-ignore
+      const recipesSnap = await getDocs(collection(db, 'recipes'));
+      const recipes = recipesSnap.docs.map((d: any) => d.data());
 
-        if (aiResult.functionCalls) {
-          for (const call of aiResult.functionCalls) {
-            let toolResult = "";
-            if (call.name === 'crawl_recipe') {
-              toolResult = await crawlRecipe(call.args.url);
-            } else if (call.name === 'search_google_drive') {
-              toolResult = await searchDrive(call.args.query);
-            } else if (call.name === 'search_google_photos') {
-              toolResult = await searchPhotos(call.args.query);
-            } else if (call.name === 'search_google_keep') {
-              toolResult = await searchKeep(call.args.query);
-            }
+      const result = await multiAgentChat(
+        preferences.selectedModelId,
+        history,
+        "Bạn là Bếp trưởng điều phối của một nhà hàng chuyên nghiệp.",
+        aiConfig,
+        inventory,
+        recipes
+      );
 
-            const actionMsg = call.name === 'crawl_recipe' 
-              ? `Đang lấy công thức từ: ${call.args.url}` 
-              : `Đang tìm kiếm: ${call.args.query}`;
+      const aiMsgId = Math.random().toString(36).substring(7);
+      await setDoc(doc(db, 'chats', aiMsgId), {
+        text: result.text,
+        internalMonologue: result.internalMonologue,
+        proposedActions: result.proposedActions || [],
+        sender: 'ai',
+        userId: auth.currentUser?.uid,
+        conversationId: activeConversationId,
+        timestamp: serverTimestamp(),
+        status: 'completed'
+      });
 
-            history.push({ 
-              role: 'model', 
-              parts: [{ text: actionMsg }] 
-            });
-            history.push({ 
-              role: 'user', 
-              parts: [{ text: toolResult || "Không tìm thấy kết quả nào từ công cụ này." }] 
-            });
-            aiResult = await chatWithAIWithFallback(
-              preferences.selectedModelId, 
-              history, 
-              systemInstruction,
-              tools,
-              aiConfig,
-              fallbacks
-            );
-          }
-        }
-      } catch (error) {
-        throw error; // Let the outer catch handle it
-      }
+      // Update user message status to completed
+      await updateDoc(doc(db, 'chats', userMsg.id), { status: 'completed' });
 
-        // Update user message status to completed
-        await updateDoc(doc(db, 'chats', userMsg.id), { status: 'completed' });
+      // Extract memories in background
+      extractMemoriesFromChat(auth.currentUser!.uid, [...allMessages, { text: result.text, sender: 'ai' }], preferences.selectedModelId, aiConfig);
 
-        let finalSuggestions = aiResult.suggestions || [];
-        if (aiResult.recipe && !finalSuggestions.some((s: any) => s.action === 'save_recipe')) {
-          finalSuggestions = [
-            { label: "💾 Lưu công thức này", action: "save_recipe" },
-            ...finalSuggestions
-          ];
-        }
+    } catch (aiError: any) {
+      console.error("AI Call failed:", aiError);
+      await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
+      // ... error handling logic ...
+    } finally {
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    }
+  };
 
-        await addDoc(collection(db, 'chats'), {
-          text: aiResult.text || "Xin lỗi, tôi gặp chút trục trặc khi xử lý yêu cầu này (Không có phản hồi từ AI). Vui lòng thử lại hoặc đổi mô hình.",
-          suggestions: finalSuggestions,
-          recipe: aiResult.recipe || null,
-          photos: aiResult.photos || null,
-          sender: 'ai',
-          userId: auth.currentUser.uid,
-          conversationId: userMsg.conversationId,
-          timestamp: serverTimestamp()
+  const approveAction = async (msgId: string, actionIndex: number) => {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg || !msg.proposedActions) return;
+
+    const action = msg.proposedActions[actionIndex];
+    if (action.approved) return;
+
+    try {
+      if (action.type === 'add_recipe') {
+        await addDoc(collection(db, 'recipes'), {
+          ...action.data,
+          authorId: auth.currentUser?.uid,
+          createdAt: serverTimestamp()
         });
-
-        // Update conversation last message with AI response
-        if (userMsg.conversationId) {
-          await updateDoc(doc(db, 'conversations', userMsg.conversationId), {
-            lastMessage: aiResult.text?.slice(0, 100) || "Phản hồi từ AI",
+      } else if (action.type === 'update_inventory') {
+        const q = query(collection(db, 'inventory'), where('name', '==', action.data.name));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'inventory', snap.docs[0].id), {
+            currentStock: action.data.amount,
             updatedAt: serverTimestamp()
           });
         }
-      } catch (aiError: any) {
-        console.error("AI Call failed:", aiError);
-        await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
-
-        let errorMessage = "Đã xảy ra lỗi khi kết nối với AI.";
-        const errorStr = String(aiError).toLowerCase();
-        
-        if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
-          errorMessage = "⚠️ **Hết hạn mức (Quota Limit):** Mô hình AI này hiện đã hết lượt sử dụng hoặc vượt quá giới hạn tốc độ. \n\n**Lời khuyên:** Bạn có thể chuyển sang **Gemini Flash** (Miễn phí) hoặc các model từ **OpenRouter/NVIDIA** để tiếp tục.";
-          
-          const suggestions = [
-            { label: "🔄 Thử lại", action: "retry" },
-            { label: "✨ Chuyển sang Gemini Flash (Free)", action: "switch_to_gemini" },
-            { label: "🚀 Dùng DeepSeek (OpenRouter)", action: "switch_to_deepseek" },
-            { label: "⚙️ Cài đặt API", action: "open_settings" }
-          ];
-
-          await addDoc(collection(db, 'chats'), {
-            text: errorMessage,
-            sender: 'ai',
-            userId: auth.currentUser.uid,
-            timestamp: serverTimestamp(),
-            suggestions
-          });
-        } else if (errorStr.includes('500') || errorStr.includes('internal')) {
-          errorMessage = "⚠️ **Lỗi máy chủ AI (500):** Dịch vụ AI đang gặp sự cố tạm thời. Vui lòng thử lại sau vài phút.";
-          await addDoc(collection(db, 'chats'), {
-            text: errorMessage,
-            sender: 'ai',
-            userId: auth.currentUser.uid,
-            timestamp: serverTimestamp(),
-            suggestions: [
-              { label: "🔄 Thử lại", action: "retry" },
-              { label: "⚙️ Cài đặt", action: "open_settings" }
-            ]
-          });
-        } else {
-          // Try to extract a cleaner message if it's a complex error object
-          let detail = aiError.message || String(aiError);
-          
-          // Look for JSON-like structure in the error message
-          const jsonMatch = detail.match(/\{.*\}/);
-          if (jsonMatch) {
-            try {
-              const parsed = JSON.parse(jsonMatch[0]);
-              detail = parsed.error?.message || parsed.message || detail;
-            } catch (e) {}
-          }
-          
-          errorMessage = `⚠️ **Lỗi hệ thống:** ${detail}`;
-          await addDoc(collection(db, 'chats'), {
-            text: errorMessage,
-            sender: 'ai',
-            userId: auth.currentUser.uid,
-            timestamp: serverTimestamp(),
-            suggestions: [
-              { label: "🔄 Thử lại", action: "retry" },
-              { label: "⚙️ Cài đặt", action: "open_settings" }
-            ]
-          });
-        }
-      } finally {
-        isProcessingRef.current = false;
-        setIsProcessing(false);
       }
+
+      // Mark as approved
+      const newActions = [...msg.proposedActions];
+      newActions[actionIndex] = { ...action, approved: true };
+      await updateDoc(doc(db, 'chats', msgId), { proposedActions: newActions });
+
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'chats');
+    }
   };
 
   const handleSend = async (overrideText?: string) => {
@@ -648,7 +603,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       return;
     }
     if (suggestion.action === 'switch_to_gemini') {
-      updatePreference('selectedModelId', 'gemini-flash-latest');
+      updatePreference('selectedModelId', 'gemini-3.1-flash-lite-preview');
       // After switching, trigger a retry automatically
       const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
       if (lastUserMsg) {
@@ -716,6 +671,35 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     }
   };
 
+  const saveImage = async (url: string, filename: string) => {
+    if (!auth.currentUser) return;
+    setSavingImageUrls(prev => new Set(prev).add(url));
+    try {
+      await addDoc(collection(db, 'saved_images'), {
+        url,
+        filename,
+        title: filename || "Hình ảnh từ Chat",
+        userId: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        source: 'chef_chat'
+      });
+      setTimeout(() => {
+        setSavingImageUrls(prev => {
+          const next = new Set(prev);
+          next.delete(url);
+          return next;
+        });
+      }, 2000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'saved_images');
+      setSavingImageUrls(prev => {
+        const next = new Set(prev);
+        next.delete(url);
+        return next;
+      });
+    }
+  };
+
   const colorOptions = {
     user: [
       { name: 'Đen Đá', class: 'bg-stone-900' },
@@ -742,8 +726,6 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
     (m.recipe?.title && m.recipe.title.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const isActuallyTyping = messages.some(m => m.sender === 'user' && (m.status === 'pending' || m.status === 'processing'));
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -751,15 +733,48 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       exit={{ opacity: 0 }}
       className={cn("flex flex-col h-[calc(100vh-80px)] transition-colors duration-500", preferences.chatBackground)}
     >
-      <header className="p-3 md:p-4 bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm">
+      <header className="p-4 bg-white border-b border-neutral-100 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center shadow-inner">
-              <ChefHat className="w-5 h-5 text-orange-600" />
+            <div className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center">
+              <ChefHat className="w-5 h-5 text-white" />
             </div>
-            <div className="hidden sm:block">
-              <h1 className="font-bold text-stone-900 text-sm md:text-base">Cố vấn Đầu bếp</h1>
-              <div className="flex items-center gap-1 text-[9px] text-green-600 font-bold uppercase tracking-widest">
+            <div>
+              {editingTitle && activeConversationId ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    onBlur={() => updateConversationTitle(activeConversationId, tempTitle)}
+                    onKeyDown={(e) => e.key === 'Enter' && updateConversationTitle(activeConversationId, tempTitle)}
+                    autoFocus
+                    className="text-sm font-semibold text-neutral-900 border-b border-neutral-900 focus:outline-none bg-transparent"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group">
+                  <h1 
+                    className="font-semibold text-neutral-900 text-sm cursor-pointer hover:text-orange-600 transition-colors"
+                    onClick={() => {
+                      if (activeConversationId) {
+                        const currentConv = conversations.find(c => c.id === activeConversationId);
+                        setTempTitle(currentConv?.title || '');
+                        setEditingTitle(true);
+                      }
+                    }}
+                  >
+                    {activeConversationId 
+                      ? conversations.find(c => c.id === activeConversationId)?.title || "Cố vấn Đầu bếp"
+                      : "Cố vấn Đầu bếp"
+                    }
+                  </h1>
+                  {activeConversationId && (
+                    <Pencil className="w-3 h-3 text-neutral-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-medium">
                 <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
                 Trực tuyến
               </div>
@@ -946,6 +961,8 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                   onClick={() => {
                     setActiveConversationId(null);
                     setMessages([]);
+                    setEditingTitle(false);
+                    setTempTitle('');
                   }}
                   className="p-1.5 hover:bg-orange-50 text-orange-600 rounded-lg transition-colors"
                   title="Chat mới"
@@ -962,14 +979,16 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                   </div>
                 ) : (
                   conversations.map(conv => (
-                    <button
+                    <div
                       key={conv.id}
                       onClick={() => {
                         setActiveConversationId(conv.id);
+                        setEditingTitle(false);
+                        setTempTitle('');
                         if (window.innerWidth < 768) setShowHistory(false);
                       }}
                       className={cn(
-                        "w-full text-left p-3 rounded-xl transition-all group relative",
+                        "w-full text-left p-3 rounded-xl transition-all group relative cursor-pointer",
                         activeConversationId === conv.id 
                           ? "bg-orange-50 border-orange-100 ring-1 ring-orange-200" 
                           : "hover:bg-stone-50 border-transparent"
@@ -995,7 +1014,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
-                    </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -1007,30 +1026,30 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
         <div className="flex-1 flex flex-col relative overflow-hidden">
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {filteredMessages.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-6 animate-in fade-in zoom-in duration-700">
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-8 animate-in fade-in zoom-in duration-1000">
             <div className="relative">
-              <div className="w-24 h-24 bg-orange-100 rounded-3xl flex items-center justify-center mx-auto shadow-inner rotate-3">
-                <ChefHat className="w-12 h-12 text-orange-600 -rotate-3" />
+              <div className="w-28 h-28 bg-stone-900 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl shadow-stone-200 rotate-6 group hover:rotate-0 transition-all duration-500">
+                <ChefHat className="w-14 h-14 text-white -rotate-6 group-hover:rotate-0 transition-all duration-500" />
               </div>
-              <div className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full shadow-md flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-orange-400 animate-pulse" />
+              <div className="absolute -top-2 -right-2 w-10 h-10 bg-white rounded-2xl shadow-xl flex items-center justify-center border border-stone-50">
+                <Sparkles className="w-5 h-5 text-orange-400 animate-pulse" />
               </div>
             </div>
-            <div className="space-y-2 max-w-sm">
-              <h3 className="font-bold text-stone-900 text-lg">Chào mừng bạn đến với Bếp Trưởng AI</h3>
-              <p className="text-stone-500 text-sm leading-relaxed">
+            <div className="space-y-3 max-w-sm">
+              <h3 className="text-2xl font-display font-bold text-stone-900 tracking-tight">Trợ lý Bếp trưởng</h3>
+              <p className="text-stone-400 text-sm leading-relaxed font-medium">
                 {searchQuery 
-                  ? `Không tìm thấy kết quả nào cho "${searchQuery}". Hãy thử từ khóa khác.` 
-                  : "Tôi có thể giúp bạn lên thực đơn, tính toán Food Cost, tối ưu hóa Yield hoặc tìm kiếm công thức từ Google Drive/Photos."}
+                  ? `Không tìm thấy kết quả nào cho "${searchQuery}".` 
+                  : "Tôi có thể giúp bạn lên thực đơn, tính Food Cost, hoặc tìm kiếm công thức từ kho dữ liệu của bạn."}
               </p>
             </div>
             {!searchQuery && (
-              <div className="grid grid-cols-2 gap-2 w-full max-w-xs">
+              <div className="flex flex-wrap justify-center gap-2 max-w-md">
                 {['Tính Food Cost', 'Lên thực đơn', 'Tìm công thức', 'Tối ưu Yield'].map((hint) => (
                   <button
                     key={hint}
                     onClick={() => setInputText(hint)}
-                    className="px-3 py-2 bg-white border border-stone-100 rounded-xl text-[10px] font-bold uppercase tracking-wider text-stone-500 hover:border-orange-300 hover:text-orange-600 transition-all shadow-sm"
+                    className="px-5 py-2.5 bg-white border border-stone-100 rounded-2xl text-[10px] font-bold uppercase tracking-widest text-stone-500 hover:bg-stone-900 hover:text-white hover:border-stone-900 transition-all shadow-sm active:scale-95"
                   >
                     {hint}
                   </button>
@@ -1047,25 +1066,25 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
             className={cn(
-              "flex gap-3 max-w-[90%] md:max-w-[80%]",
+              "flex gap-4 max-w-[90%] md:max-w-[85%]",
               msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
             )}
           >
             <div className={cn(
-              "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm",
-              msg.sender === 'user' ? "bg-stone-800" : "bg-white border border-stone-100"
+              "w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
+              msg.sender === 'user' ? "bg-neutral-900" : "bg-neutral-50"
             )}>
-              {msg.sender === 'user' ? <User className="w-5 h-5 text-stone-300" /> : <ChefHat className="w-5 h-5 text-orange-600" />}
+              {msg.sender === 'user' ? <User className="w-5 h-5 text-white" /> : <ChefHat className="w-5 h-5 text-neutral-900" />}
             </div>
             <div className={cn(
               "space-y-2 flex flex-col",
               msg.sender === 'user' ? "items-end" : "items-start"
             )}>
               <div className={cn(
-                "p-4 rounded-2xl text-sm leading-relaxed shadow-sm transition-all",
+                "p-4 rounded-2xl text-sm leading-relaxed transition-all",
                 msg.sender === 'user' 
-                  ? cn(preferences.chatUserBubbleColor, "text-white rounded-tr-none", (msg.status === 'pending' || msg.status === 'processing') && "animate-pulse opacity-80") 
-                  : cn(preferences.chatAiBubbleColor, "border border-stone-100 text-stone-800 rounded-tl-none")
+                  ? "bg-neutral-900 text-white rounded-tr-none" 
+                  : "bg-neutral-50 text-neutral-800 rounded-tl-none"
               )}>
                 {msg.hasFiles && msg.files && (
                   <div className="flex flex-wrap gap-2 mb-3">
@@ -1075,34 +1094,76 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                           <img 
                             src={`data:${file.mimeType};base64,${file.data}`} 
                             alt={file.name}
-                            className="w-32 h-32 object-cover rounded-xl border border-white/20 shadow-sm hover:scale-105 transition-transform cursor-pointer"
+                            className="w-32 h-32 object-cover rounded-xl border border-neutral-100 shadow-sm hover:scale-105 transition-transform cursor-pointer"
                             referrerPolicy="no-referrer"
                             onClick={() => window.open(`data:${file.mimeType};base64,${file.data}`, '_blank')}
                           />
                         ) : (
-                          <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-2 rounded-xl text-[10px] font-medium border border-white/10">
-                            <FileText className="w-4 h-4" />
-                            <span className="truncate max-w-[100px]">{file.name}</span>
+                          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl text-[10px] font-medium border border-neutral-100">
+                            <FileText className="w-3.5 h-3.5 text-neutral-400" />
+                            <span className="truncate max-w-[100px] text-neutral-600">{file.name}</span>
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
                 )}
-                {msg.recipe && (
-                  <div className="flex items-center gap-2 mb-2 bg-orange-50 text-orange-600 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest w-fit border border-orange-100">
-                    <Sparkles className="w-3 h-3" />
-                    Công thức có cấu trúc
-                  </div>
-                )}
-                <div className="markdown-body">
+                <div className="markdown-body prose prose-neutral prose-sm max-w-none">
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
 
+                {msg.internalMonologue && (
+                  <div className="mt-2 p-3 bg-stone-50/50 rounded-xl border border-stone-100/50 italic text-[10px] text-stone-500">
+                    <div className="flex items-center gap-1.5 mb-1 font-bold uppercase tracking-wider text-[9px]">
+                      <Sparkles className="w-3 h-3 text-orange-400" />
+                      Thảo luận nội bộ Agent
+                    </div>
+                    "{msg.internalMonologue}"
+                  </div>
+                )}
+
+                {msg.proposedActions && msg.proposedActions.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 flex items-center gap-2">
+                      <ListChecks className="w-3 h-3" />
+                      Đề xuất hành động (HITL)
+                    </h4>
+                    <div className="grid gap-2">
+                      {msg.proposedActions.map((action, idx) => (
+                        <div key={idx} className="bg-white border border-stone-100 rounded-xl p-3 flex items-center justify-between gap-4 shadow-sm">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-stone-100 rounded text-stone-500">
+                                {action.type.replace('_', ' ')}
+                              </span>
+                              <span className="text-[11px] font-bold text-stone-900 truncate">
+                                {action.data.title || action.data.name}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-stone-400 italic truncate">{action.reason}</p>
+                          </div>
+                          <button
+                            onClick={() => approveAction(msg.id, idx)}
+                            disabled={action.approved}
+                            className={cn(
+                              "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all",
+                              action.approved 
+                                ? "bg-green-50 text-green-600 border border-green-100" 
+                                : "bg-stone-900 text-white hover:bg-stone-800 active:scale-95"
+                            )}
+                          >
+                            {action.approved ? "Đã thực thi" : "Phê duyệt"}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {msg.sender === 'user' && (msg.status === 'pending' || msg.status === 'processing') && (
-                  <div className="flex items-center gap-1.5 mt-2 text-[10px] text-white/60 font-medium italic">
+                  <div className="flex items-center gap-2 mt-2 text-[10px] text-white/40 font-medium uppercase tracking-wider">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Bếp trưởng đang xem xét...</span>
+                    <span>Đang xử lý...</span>
                   </div>
                 )}
 
@@ -1111,29 +1172,46 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                     recipe={msg.recipe} 
                     onSave={() => saveRecipeFromChat(msg)}
                     isSaving={savingRecipeId === msg.id}
+                    onSaveImage={() => msg.recipe?.image && saveImage(msg.recipe.image, msg.recipe.title)}
+                    isSavingImage={msg.recipe?.image ? savingImageUrls.has(msg.recipe.image) : false}
                   />
                 )}
 
                 {msg.photos && msg.photos.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
-                    {msg.photos.map((photo, i) => (
-                      <motion.div 
-                        key={i}
-                        whileHover={{ scale: 1.05 }}
-                        className="relative aspect-square rounded-xl overflow-hidden border border-stone-200 shadow-sm cursor-pointer group"
-                        onClick={() => window.open(photo.url, '_blank')}
-                      >
-                        <img 
-                          src={photo.url} 
-                          alt={photo.filename}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                          <ImageIcon className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </motion.div>
-                    ))}
+                    {msg.photos.map((photo, i) => {
+                      const isSaving = savingImageUrls.has(photo.url);
+                      return (
+                        <motion.div 
+                          key={i}
+                          whileHover={{ scale: 1.02 }}
+                          className="relative aspect-square rounded-xl overflow-hidden border border-stone-200 shadow-sm group"
+                        >
+                          <img 
+                            src={photo.url} 
+                            alt={photo.filename}
+                            className="w-full h-full object-cover cursor-pointer"
+                            referrerPolicy="no-referrer"
+                            onClick={() => window.open(photo.url, '_blank')}
+                          />
+                          <div className="absolute top-2 right-2 flex gap-2">
+                            <button 
+                              onClick={() => saveImage(photo.url, photo.filename)}
+                              disabled={isSaving}
+                              className={cn(
+                                "p-2 rounded-lg backdrop-blur-md transition-all shadow-lg",
+                                isSaving 
+                                  ? "bg-green-500 text-white" 
+                                  : "bg-white/80 text-neutral-900 opacity-0 group-hover:opacity-100 hover:bg-white"
+                              )}
+                            >
+                              {isSaving ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 pointer-events-none transition-colors" />
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1195,15 +1273,15 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
         <div ref={scrollRef} />
       </div>
 
-      <div className="p-3 md:p-4 bg-white/80 backdrop-blur-md border-t border-stone-200 sticky bottom-0 z-30">
-        <div className="max-w-4xl mx-auto space-y-3">
+      <div className="p-4 bg-white border-t border-neutral-100">
+        <div className="max-w-4xl mx-auto space-y-4">
           <AnimatePresence>
             {fileError && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
-                className="bg-red-50 border border-red-200 text-red-600 px-4 py-2 rounded-xl text-xs flex items-center justify-between"
+                className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" />
@@ -1215,58 +1293,42 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
               </motion.div>
             )}
             {selectedFiles.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Tệp đính kèm ({selectedFiles.length})</span>
-                  <button 
-                    onClick={() => setSelectedFiles([])}
-                    className="text-[10px] font-bold text-orange-600 hover:text-orange-700 transition-colors"
-                  >
-                    Xóa tất cả
-                  </button>
-                </div>
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="flex flex-wrap gap-2"
-                >
-                  {selectedFiles.map((file, i) => (
-                    <div key={i} className="relative group">
-                      <div className="bg-white p-1 rounded-xl flex items-center gap-2 pr-8 border border-stone-200 shadow-sm">
-                        {file.mimeType.startsWith('image/') ? (
-                          <img 
-                            src={`data:${file.mimeType};base64,${file.data}`} 
-                            alt={file.name}
-                            className="w-10 h-10 object-cover rounded-lg"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 bg-stone-50 rounded-lg flex items-center justify-center">
-                            {file.mimeType.startsWith('video/') ? <Video className="w-5 h-5 text-red-500" /> : <FileText className="w-5 h-5 text-blue-500" />}
-                          </div>
-                        )}
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-bold truncate max-w-[80px] text-stone-700">{file.name}</span>
-                          <span className="text-[8px] text-stone-400 uppercase">{file.mimeType.split('/')[1]}</span>
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="flex flex-wrap gap-2"
+              >
+                {selectedFiles.map((file, i) => (
+                  <div key={i} className="relative group">
+                    <div className="bg-neutral-50 p-1 rounded-xl flex items-center gap-2 pr-8 border border-neutral-100">
+                      {file.mimeType.startsWith('image/') ? (
+                        <img 
+                          src={`data:${file.mimeType};base64,${file.data}`} 
+                          alt={file.name}
+                          className="w-10 h-10 object-cover rounded-lg"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+                          <FileText className="w-4 h-4 text-neutral-400" />
                         </div>
-                      </div>
-                      <button
-                        onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
-                        className="absolute -top-1 -right-1 bg-stone-800 text-white rounded-full p-1 shadow-lg hover:bg-red-500 transition-colors"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      )}
+                      <span className="text-[10px] font-medium truncate max-w-[80px] text-neutral-600">{file.name}</span>
                     </div>
-                  ))}
-                </motion.div>
-              </div>
+                    <button
+                      onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))}
+                      className="absolute -top-1 -right-1 bg-neutral-900 text-white rounded-full p-1 shadow-sm hover:bg-red-500 transition-colors"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </motion.div>
             )}
           </AnimatePresence>
 
-          {/* API Status check removed from chat */}
-
-          <div className="relative flex items-center gap-2">
+          <div className="relative flex items-center gap-3">
             <input
               type="file"
               ref={fileInputRef}
@@ -1275,33 +1337,31 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
               className="hidden"
               accept="image/*,video/*,application/pdf,text/*"
             />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isActuallyTyping}
-              className="p-3 bg-stone-100 hover:bg-stone-200 rounded-2xl text-stone-500 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-              title="Đính kèm"
-            >
-              <Paperclip className="w-5 h-5" />
-            </button>
-            <div className="relative flex-1 group">
+            <div className="relative flex-1">
               <input
                 type="text"
-                placeholder={isRecipeCrawActive ? "RecipeCraw đang hoạt động..." : "Hỏi Bếp Trưởng AI..."}
+                placeholder="Hỏi Bếp Trưởng AI..."
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                className={cn(
-                  "w-full bg-stone-50 border border-stone-200 rounded-2xl py-3.5 pl-5 pr-14 focus:outline-none focus:ring-2 transition-all shadow-inner",
-                  isRecipeCrawActive ? "focus:ring-orange-500 border-orange-200" : "focus:ring-orange-500"
-                )}
+                className="w-full bg-neutral-50 border border-neutral-100 rounded-2xl py-4 pl-6 pr-24 text-sm focus:outline-none focus:bg-white focus:border-neutral-900 transition-all"
               />
-              <button
-                onClick={() => handleSend()}
-                disabled={(!inputText.trim() && selectedFiles.length === 0) || isActuallyTyping}
-                className="absolute right-1.5 top-1.5 bottom-1.5 w-11 bg-orange-600 rounded-xl flex items-center justify-center text-white hover:bg-orange-700 disabled:opacity-50 transition-all hover:scale-105 active:scale-95 shadow-md"
-              >
-                <Send className="w-5 h-5" />
-              </button>
+              <div className="absolute right-2 top-2 bottom-2 flex items-center gap-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isActuallyTyping}
+                  className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-neutral-900 transition-all"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => handleSend()}
+                  disabled={(!inputText.trim() && selectedFiles.length === 0) || isActuallyTyping}
+                  className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center text-white hover:bg-neutral-800 disabled:opacity-20 transition-all"
+                >
+                  <Send className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
