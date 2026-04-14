@@ -28,6 +28,7 @@ import {
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, updateDoc, doc, serverTimestamp } from '../lib/firebase';
 import { analyzeMenuImage } from '../lib/gemini';
 import { cn } from '../lib/utils';
+import { useDebounce } from '../lib/useDebounce';
 
 interface InventoryItem {
   id: string;
@@ -58,6 +59,7 @@ export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (t
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [newItem, setNewItem] = useState({ name: '', currentStock: 0, minStock: 0, unit: 'kg', category: 'Thực phẩm' });
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{
@@ -123,7 +125,7 @@ export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (t
   };
 
   const filteredRecipes = recipes.filter(recipe => {
-    const query = searchQuery.toLowerCase();
+    const query = debouncedSearchQuery.toLowerCase();
     const matchesTitle = recipe.title.toLowerCase().includes(query);
     const matchesIngredients = recipe.ingredients?.some(ing => 
       ing.name.toLowerCase().includes(query)

@@ -3,12 +3,14 @@ import { db, collection, query, where, orderBy, onSnapshot, auth, deleteDoc, doc
 import { motion, AnimatePresence } from 'framer-motion';
 import { ImageIcon, Trash2, Download, ExternalLink, Search, Calendar, ChefHat } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useDebounce } from '../lib/useDebounce';
 
 export function Gallery() {
   const [images, setImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImage, setSelectedImage] = useState<any>(null);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -39,8 +41,8 @@ export function Gallery() {
   };
 
   const filteredImages = images.filter(img => 
-    img.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    img.source?.toLowerCase().includes(searchQuery.toLowerCase())
+    img.title?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+    img.source?.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
   );
 
   return (
@@ -91,6 +93,7 @@ export function Gallery() {
                   alt={img.title}
                   className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   referrerPolicy="no-referrer"
+                  loading="lazy"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
                   <p className="text-white text-xs font-bold truncate">{img.title}</p>
