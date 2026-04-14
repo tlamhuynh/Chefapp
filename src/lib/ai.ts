@@ -15,9 +15,9 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite', provider: 'google', description: 'Rẻ nhất & Nhanh nhất. Phù hợp cho các tác vụ đơn giản.' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Mặc định & Cân bằng. Tốc độ nhanh, thông minh.' },
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi phí và chiến lược kinh doanh chuyên sâu.' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', description: 'Cân bằng & Nhanh. Phù hợp cho hầu hết các tác vụ.' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi tiết và lập luận phức tạp.' },
+  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B', provider: 'google', description: 'Siêu nhanh & Tiết kiệm cho các tác vụ đơn giản.' },
   { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', description: 'Siêu tiết kiệm. Phản hồi cực nhanh, thông minh vượt trội.' },
   { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'openrouter/deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', provider: 'openrouter', description: 'Model mã nguồn mở mạnh mẽ nhất từ Trung Quốc.' },

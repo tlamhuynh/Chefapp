@@ -3,14 +3,12 @@ import { db, collection, query, where, orderBy, onSnapshot, auth } from '../lib/
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChefHat, Search, Calendar, DollarSign, ChevronRight } from 'lucide-react';
 import { RecipeDetail } from './RecipeDetail';
-import { useDebounce } from '../lib/useDebounce';
 
 export function RecipeList() {
   const [recipes, setRecipes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -27,8 +25,8 @@ export function RecipeList() {
   }, []);
 
   const filteredRecipes = recipes.filter(r => 
-    r.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-    r.theme?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+    (r.title?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+    (r.theme?.toLowerCase() || "").includes(searchTerm.toLowerCase())
   );
 
   return (

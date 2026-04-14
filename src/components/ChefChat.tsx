@@ -4,7 +4,7 @@ import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosToo
 import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel, multiAgentChat } from '../lib/ai';
 import { getMemories, formatMemoriesForPrompt, extractMemoriesFromChat, Memory } from '../lib/memory';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle, Pencil, ListChecks } from 'lucide-react';
+import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle, Pencil, ListChecks, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn, validateRecipe } from '../lib/utils';
 import { DollarSign, Clock, Utensils } from 'lucide-react';
@@ -159,6 +159,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showMonologue, setShowMonologue] = useState<Record<string, boolean>>({});
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
@@ -774,9 +775,15 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                   )}
                 </div>
               )}
-              <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-medium">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                Trực tuyến
+              <div className="flex items-center gap-2 text-[10px] text-neutral-400 font-medium">
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  Trực tuyến
+                </div>
+                <span className="text-stone-300">•</span>
+                <span className="font-bold text-orange-600 uppercase tracking-widest">
+                  {AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name || preferences.selectedModelId}
+                </span>
               </div>
             </div>
           </div>
@@ -1113,12 +1120,29 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                 </div>
 
                 {msg.internalMonologue && (
-                  <div className="mt-2 p-3 bg-stone-50/50 rounded-xl border border-stone-100/50 italic text-[10px] text-stone-500">
-                    <div className="flex items-center gap-1.5 mb-1 font-bold uppercase tracking-wider text-[9px]">
-                      <Sparkles className="w-3 h-3 text-orange-400" />
-                      Thảo luận nội bộ Agent
-                    </div>
-                    "{msg.internalMonologue}"
+                  <div className="mt-2 overflow-hidden rounded-xl border border-stone-100/50">
+                    <button 
+                      onClick={() => setShowMonologue(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                      className="w-full flex items-center justify-between p-3 bg-stone-50/50 hover:bg-stone-100/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[9px] text-stone-500">
+                        <Sparkles className="w-3 h-3 text-orange-400" />
+                        Thảo luận nội bộ Agent
+                      </div>
+                      {showMonologue[msg.id] ? <ChevronUp className="w-3 h-3 text-stone-400" /> : <ChevronDown className="w-3 h-3 text-stone-400" />}
+                    </button>
+                    <AnimatePresence>
+                      {showMonologue[msg.id] && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="px-3 pb-3 pt-1 bg-stone-50/50 italic text-[10px] text-stone-500 border-t border-stone-100/50"
+                        >
+                          "{msg.internalMonologue}"
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
 

@@ -10,20 +10,18 @@ import { CreativeAgent } from './components/CreativeAgent';
 import { Profile } from './components/Profile';
 import { Gallery } from './components/Gallery';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LogIn, ChefHat, Sparkles, Key, ArrowRight, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from './lib/utils';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'recipes' | 'chat' | 'profile' | 'creative' | 'gallery' | 'generator'>('dashboard');
-  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [preferences, setPreferences] = useState({
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-3.1-flash-lite-preview',
+    selectedModelId: 'gemini-1.5-flash',
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',
@@ -91,8 +89,6 @@ export default function App() {
   const handleLogin = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-      setNotification({ message: 'Đăng nhập thành công!', type: 'success' });
-      setTimeout(() => setNotification(null), 3000);
     } catch (error: any) {
       console.error("Login failed", error);
       let msg = "Đăng nhập thất bại. Vui lòng thử lại.";
@@ -103,8 +99,7 @@ export default function App() {
       } else if (error.message?.includes('requested action is invalid')) {
         msg = "Lỗi cấu hình Firebase (Action Invalid). Vui lòng kiểm tra SHA-1 (cho APK) hoặc Authorized Domains.";
       }
-      setNotification({ message: msg, type: 'error' });
-      setTimeout(() => setNotification(null), 5000);
+      alert(msg);
     }
   };
 
@@ -123,29 +118,6 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AnimatePresence>
-        {notification && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -20, x: '-50%' }}
-            className={cn(
-              "fixed top-6 left-1/2 z-[200] px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border backdrop-blur-md",
-              notification.type === 'success'
-                ? "bg-green-50/90 border-green-100 text-green-800"
-                : "bg-red-50/90 border-red-100 text-red-800"
-            )}
-          >
-            {notification.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-green-500" />
-            ) : (
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-            )}
-            <span className="text-sm font-bold">{notification.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {!user ? (
         <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-6 text-center">
           <motion.div
