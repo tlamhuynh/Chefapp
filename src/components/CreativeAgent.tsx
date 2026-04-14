@@ -3,7 +3,7 @@ import { LocalDb } from '../lib/localDb';
 import { creativeAgentInstruction, ChatMessage } from '../lib/gemini';
 import { chatWithAIWithFallback, AVAILABLE_MODELS } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Palette, Sparkles, User, Loader2, Paperclip, X, Image as ImageIcon, Layout, Camera, Share2 } from 'lucide-react';
+import { Send, Palette, Sparkles, User, Loader2, Paperclip, X, Image as ImageIcon, Layout, Camera, Share2, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 
@@ -19,6 +19,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsProcessing(true);
+    setError(null);
     await LocalDb.addDoc('creative_chats', userMsg);
 
     try {
@@ -69,6 +71,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
         role: m.sender === 'user' ? 'user' : 'model',
         parts: [{ text: m.text }]
       }));
+      setError(null);
 
       // Define fallback chain
       const fallbacks = [
@@ -86,7 +89,6 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
           openaiKey: preferences.openaiKey, 
           anthropicKey: preferences.anthropicKey, 
           googleKey: preferences.googleKey,
-          openrouterKey: preferences.openrouterKey,
           nvidiaKey: preferences.nvidiaKey,
           groqKey: preferences.groqKey
         },
@@ -105,6 +107,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
       await LocalDb.addDoc('creative_chats', aiMsg);
     } catch (error: any) {
       console.error("Creative Agent Error:", error);
+      setError(error.message || "Đã xảy ra lỗi khi kết nối với AI.");
       const errorStr = String(error).toLowerCase();
       let errorMessage = 'Xin lỗi, tôi gặp chút trục trặc. Bạn thử lại nhé!';
       
@@ -147,7 +150,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
   const isActuallyTyping = isProcessing;
 
   return (
-    <div className="flex flex-col h-full bg-stone-50/50">
+    <div className="flex flex-col h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] bg-stone-50/50 rounded-3xl overflow-hidden border border-stone-100">
       <header className="px-6 py-8 space-y-1">
         <div className="flex justify-between items-center">
           <div className="space-y-0.5">
@@ -180,7 +183,7 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className={cn(
-              "flex gap-4 max-w-[90%] md:max-w-[85%]",
+              "flex gap-4 w-full max-w-2xl",
               msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
             )}
           >
@@ -224,6 +227,24 @@ export function CreativeAgent({ preferences, updatePreference, setActiveTab }: {
 
       <div className="p-4 md:p-6 bg-white/80 backdrop-blur-xl border-t border-stone-100 sticky bottom-0 z-30">
         <div className="max-w-4xl mx-auto space-y-4">
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs flex items-center justify-between border border-red-100"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{error}</span>
+                </div>
+                <button onClick={() => setError(null)}>
+                  <X className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           {messages.length > 0 && messages[messages.length - 1].sender === 'ai' && messages[messages.length - 1].suggestions && (
             <div className="flex flex-wrap gap-2 mb-1">
               {messages[messages.length - 1].suggestions?.map((s, i) => (

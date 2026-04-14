@@ -22,10 +22,25 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
     { id: 'profile', icon: User, label: 'Cá nhân' },
   ];
 
+  const handleDragEnd = (event: any, info: any) => {
+    const swipeThreshold = 50;
+    const currentIndex = tabs.findIndex(t => t.id === activeTab);
+    
+    if (info.offset.x > swipeThreshold) {
+      // Swipe Right -> Previous Tab
+      const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+      setActiveTab(tabs[prevIndex].id);
+    } else if (info.offset.x < -swipeThreshold) {
+      // Swipe Left -> Next Tab
+      const nextIndex = (currentIndex + 1) % tabs.length;
+      setActiveTab(tabs[nextIndex].id);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col overflow-x-hidden">
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-neutral-100 z-40 flex items-center px-6">
-        <div className="w-full max-w-lg mx-auto flex justify-between items-center">
+        <div className="w-full max-w-7xl mx-auto flex justify-between items-center">
           <LogoText />
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -34,14 +49,20 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-lg mx-auto relative pb-32 pt-20">
-        <div className="px-4">
+      <motion.main 
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.1}
+        onDragEnd={handleDragEnd}
+        className="flex-1 w-full max-w-7xl mx-auto relative pb-24 md:pb-32 pt-16 md:pt-20 cursor-grab active:cursor-grabbing"
+      >
+        <div className="px-2 md:px-6 h-full pointer-events-auto">
           {children}
         </div>
-      </main>
+      </motion.main>
 
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-6 z-50">
-        <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-1.5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-neutral-100 flex justify-between items-center">
+      <nav className="fixed bottom-0 left-0 right-0 w-full z-50 md:bottom-8 md:left-1/2 md:-translate-x-1/2 md:max-w-2xl md:px-6">
+        <div className="bg-white/90 backdrop-blur-xl border-t border-neutral-100 md:border md:rounded-3xl p-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] md:shadow-[0_4px_20px_rgba(0,0,0,0.03)] flex justify-between items-center px-4 md:px-1.5">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (

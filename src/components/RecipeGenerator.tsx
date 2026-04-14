@@ -22,6 +22,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isFetchingInventory, setIsFetchingInventory] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchFromInventory = async () => {
     setIsFetchingInventory(true);
@@ -62,6 +63,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
     setIsGenerating(true);
     setGeneratedRecipe(null);
     setSaveSuccess(false);
+    setError(null);
 
     try {
       const prompt = `Tạo một công thức nấu ăn chuyên nghiệp.
@@ -81,8 +83,9 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
 
       const recipe = await generateRecipe(prompt, aiConfig, preferences.selectedModelId);
       setGeneratedRecipe(recipe);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation failed", error);
+      setError(error.message || "Không thể tạo công thức. Vui lòng kiểm tra API Key.");
     } finally {
       setIsGenerating(false);
     }
@@ -99,13 +102,16 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
 
     setIsSaving(true);
     try {
-      await addDoc(collection(db, 'recipes'), {
-        ...generatedRecipe,
+      const recipeToSave = {
+        ...(generatedRecipe.recipe || {}),
         theme: theme || 'Sáng tạo ngẫu hứng',
         ingredientsUsed: ingredients,
         authorId: auth.currentUser.uid,
-        createdAt: serverTimestamp()
-      });
+        createdAt: serverTimestamp(),
+        aiResponseText: generatedRecipe.text // Keep the full AI text just in case
+      };
+
+      await addDoc(collection(db, 'recipes'), recipeToSave);
       setSaveSuccess(true);
       setTimeout(() => {
         setActiveTab('recipes');
@@ -119,6 +125,24 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 px-4">
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-red-50 text-red-600 p-4 rounded-2xl text-xs flex items-center justify-between border border-red-100"
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+            <button onClick={() => setError(null)}>
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="space-y-2">
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-3">

@@ -23,6 +23,7 @@ export default function App() {
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
     selectedModelId: 'gemini-2.0-flash',
+    showInternalThoughts: true,
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',
@@ -74,7 +75,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  const updatePreference = async (key: string, value: string) => {
+  const updatePreference = async (key: string, value: any) => {
     if (!user) return;
     const newPrefs = { ...preferences, [key]: value };
     setPreferences(newPrefs);
@@ -200,14 +201,23 @@ export default function App() {
 
           <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
             <AnimatePresence mode="wait">
-              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
-              {activeTab === 'menu' && <MenuManagement key="menu" setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
-              {activeTab === 'recipes' && <RecipeList key="recipes" />}
-              {activeTab === 'generator' && <RecipeGenerator key="generator" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-              {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-              {activeTab === 'gallery' && <Gallery key="gallery" />}
-              {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="h-full"
+              >
+                {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
+                {activeTab === 'menu' && <MenuManagement setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
+                {activeTab === 'recipes' && <RecipeList />}
+                {activeTab === 'generator' && <RecipeGenerator preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                {activeTab === 'creative' && <CreativeAgent preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                {activeTab === 'chat' && <ChefChat preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                {activeTab === 'gallery' && <Gallery />}
+                {activeTab === 'profile' && <Profile user={user} preferences={preferences} updatePreference={updatePreference} />}
+              </motion.div>
             </AnimatePresence>
           </Layout>
         </>

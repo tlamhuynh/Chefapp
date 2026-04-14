@@ -9,7 +9,7 @@ import { AVAILABLE_MODELS, chatWithAI } from '../lib/ai';
 interface ProfileProps {
   user: User;
   preferences: any;
-  updatePreference: (key: string, value: string) => void;
+  updatePreference: (key: string, value: any) => void;
 }
 
 export function Profile({ user, preferences, updatePreference }: ProfileProps) {
@@ -68,10 +68,6 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Anthropic API Key' } }));
         continue;
       }
-      if (model.provider === 'openrouter' && !preferences.openrouterKey) {
-        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenRouter API Key' } }));
-        continue;
-      }
       if (model.provider === 'nvidia' && !preferences.nvidiaKey) {
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu NVIDIA API Key' } }));
         continue;
@@ -82,24 +78,34 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
       }
 
       try {
-        const result = await chatWithAI(
-          model.id, 
-          [{ role: 'user', parts: [{ text: 'Hi' }] }], 
-          "Chỉ trả về JSON rỗng {}",
-          undefined,
-          { 
-            openaiKey: preferences.openaiKey, 
-            anthropicKey: preferences.anthropicKey, 
-            googleKey: preferences.googleKey,
-            openrouterKey: preferences.openrouterKey,
-            nvidiaKey: preferences.nvidiaKey,
-            groqKey: preferences.groqKey
+        const key = model.provider === 'google' ? (preferences.googleKey || 'ENV') : 
+                    model.provider === 'openai' ? preferences.openaiKey :
+                    model.provider === 'anthropic' ? preferences.anthropicKey :
+                    model.provider === 'nvidia' ? preferences.nvidiaKey :
+                    model.provider === 'groq' ? preferences.groqKey : '';
+
+        if (key === 'ENV' && model.provider === 'google') {
+          // Special case for Gemini using environment variable
+          const result = await chatWithAI(
+            model.id, 
+            [{ role: 'user', parts: [{ text: 'Hi' }] }], 
+            "Chỉ trả về JSON rỗng {}",
+            undefined,
+            { googleKey: preferences.googleKey }
+          );
+          if (result) {
+            setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
           }
-        );
-        if (result) {
+          continue;
+        }
+
+        const response = await fetch(`/api/health-check?provider=${model.provider}&modelId=${model.id}&apiKey=${key}`);
+        const data = await response.json();
+
+        if (response.ok && data.status === 'ok') {
           setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
         } else {
-          throw new Error("Không có phản hồi");
+          throw new Error(data.message || "Không có phản hồi");
         }
       } catch (error: any) {
         console.error(`API check failed for ${model.id}:`, error);
@@ -329,7 +335,6 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                                 model.provider === 'google' ? "bg-blue-50 text-blue-600" : 
                                 model.provider === 'openai' ? "bg-green-50 text-green-600" :
                                 model.provider === 'anthropic' ? "bg-stone-50 text-stone-600" :
-                                model.provider === 'openrouter' ? "bg-purple-50 text-purple-600" :
                                 model.provider === 'nvidia' ? "bg-emerald-50 text-emerald-600" :
                                 model.provider === 'groq' ? "bg-orange-50 text-orange-600" :
                                 "bg-neutral-50 text-neutral-600"
@@ -366,7 +371,6 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                           { key: 'googleKey', label: 'Google Gemini API Key', placeholder: 'AIza...', icon: 'google' },
                           { key: 'openaiKey', label: 'OpenAI API Key', placeholder: 'sk-...', icon: 'openai' },
                           { key: 'anthropicKey', label: 'Anthropic API Key', placeholder: 'sk-ant-...', icon: 'anthropic' },
-                          { key: 'openrouterKey', label: 'OpenRouter API Key', placeholder: 'sk-or-...', icon: 'openrouter' },
                           { key: 'nvidiaKey', label: 'NVIDIA API Key', placeholder: 'nvapi-...', icon: 'nvidia' },
                           { key: 'groqKey', label: 'Groq API Key', placeholder: 'gsk_...', icon: 'groq' }
                         ].map(field => (
@@ -407,6 +411,17 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
 
                   {activeSettingsTab === 'status' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 space-y-3">
+                        <div className="flex items-center gap-3 text-blue-800">
+                          <Sparkles className="w-5 h-5" />
+                          <h4 className="font-bold text-sm">Vercel AI SDK Integration</h4>
+                        </div>
+                        <p className="text-[11px] text-blue-700 leading-relaxed font-medium">
+                          Hệ thống sử dụng <strong>Vercel AI SDK</strong> để tích hợp đồng nhất các mô hình từ Gemini, Groq và NVIDIA. 
+                          Đây là thư viện mạnh mẽ nhất hiện nay giúp tối ưu hóa hiệu suất và khả năng mở rộng.
+                        </p>
+                      </div>
+
                       <button 
                         onClick={checkApiStatus}
                         className="w-full py-4 bg-neutral-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
@@ -449,6 +464,30 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
 
                   {activeSettingsTab === 'system' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                      <div className="bg-neutral-900 p-6 rounded-2xl space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-white">
+                            <Sparkles className="w-5 h-5 text-orange-400" />
+                            <h4 className="font-bold text-sm">Suy nghĩ nội bộ AI</h4>
+                          </div>
+                          <button
+                            onClick={() => updatePreference('showInternalThoughts', !preferences.showInternalThoughts)}
+                            className={cn(
+                              "w-12 h-6 rounded-full transition-all relative",
+                              preferences.showInternalThoughts ? "bg-orange-600" : "bg-neutral-700"
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                              preferences.showInternalThoughts ? "left-7" : "left-1"
+                            )} />
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 leading-relaxed font-medium">
+                          Hiển thị các lập luận và thảo luận nội bộ của Agent AI bên dưới mỗi câu trả lời. Giúp bạn hiểu rõ hơn cách AI đưa ra quyết định.
+                        </p>
+                      </div>
+
                       <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 space-y-3">
                         <div className="flex items-center gap-3 text-orange-800">
                           <AlertCircle className="w-5 h-5" />

@@ -1,11 +1,7 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { generateText, streamText, tool, generateObject } from 'ai';
 import { z } from 'zod';
 
 // Types
-export type AIProvider = 'google' | 'openai' | 'anthropic' | 'openrouter' | 'nvidia' | 'groq';
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nvidia' | 'groq';
 
 export interface AIModel {
   id: string;
@@ -15,81 +11,50 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'google', description: 'Thế hệ mới nhất. Cực nhanh và thông minh.' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', description: 'Cân bằng & Nhanh. Phù hợp cho hầu hết các tác vụ.' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi tiết và lập luận phức tạp.' },
-  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B', provider: 'google', description: 'Siêu nhanh & Tiết kiệm cho các tác vụ đơn giản.' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', description: 'Siêu tiết kiệm. Phản hồi cực nhanh, thông minh vượt trội.' },
-  { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
-  { id: 'openrouter/deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', provider: 'openrouter', description: 'Model mã nguồn mở mạnh mẽ nhất từ Trung Quốc.' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'google', description: 'Thế hệ mới nhất 2026. Cực nhanh và thông minh vượt trội.' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', description: 'Model mạnh mẽ nhất từ Google, hỗ trợ context khổng lồ.' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Model đa phương thức mạnh mẽ từ OpenAI.' },
+  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'groq', description: 'Tốc độ cực nhanh từ Groq. Phản hồi gần như tức thì.' },
+  { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'groq', description: 'Tốc độ phản hồi tức thì cho các tác vụ nhanh.' },
+  { id: 'groq/compound', name: 'Groq Compound', provider: 'groq', description: 'Model phức hợp mới từ Groq, tối ưu cho suy luận.' },
+  { id: 'groq/compound-mini', name: 'Groq Compound Mini', provider: 'groq', description: 'Phiên bản nhỏ gọn, siêu nhanh của Compound.' },
+  { id: 'groq/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B (Groq)', provider: 'groq', description: 'Thế hệ Llama 4 mới nhất trên hạ tầng Groq.' },
+  { id: 'groq/openai/gpt-oss-120b', name: 'GPT-OSS 120B (Groq)', provider: 'groq', description: 'Model mã nguồn mở quy mô lớn, hiệu suất cực cao.' },
+  { id: 'groq/meta-llama/llama-prompt-guard-2-86m', name: 'Llama Prompt Guard 2 (Groq)', provider: 'groq', description: 'Model bảo mật, ngăn chặn prompt injection.' },
+  { id: 'nvidia/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (NVIDIA)', provider: 'nvidia', description: 'Model mạnh mẽ từ NVIDIA NIM, độ trễ thấp.' },
 ];
 
 export interface AIConfig {
   openaiKey?: string;
   anthropicKey?: string;
   googleKey?: string;
-  openrouterKey?: string;
   nvidiaKey?: string;
   groqKey?: string;
 }
 
-// Model Provider Factory
-function getModelProvider(modelId: string, config?: AIConfig) {
-  const model = AVAILABLE_MODELS.find(m => m.id === modelId) || AVAILABLE_MODELS[0];
-  
-  const getSafeKey = (key?: string, envKey?: string) => {
-    if (key && key.trim().length > 0) return key;
-    if (envKey && envKey !== 'undefined' && envKey.length > 0) return envKey;
-    return undefined;
-  };
+// AI Interaction Functions
+function formatMessages(messages: any[]) {
+  const aiMessages = messages.map(m => ({
+    role: m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.parts.map((p: any) => {
+      if (p.inlineData) {
+        // Strip data URL prefix if present
+        let base64Data = p.inlineData.data;
+        if (base64Data.includes('base64,')) {
+          base64Data = base64Data.split('base64,')[1];
+        }
+        return { type: 'image', image: base64Data, mimeType: p.inlineData.mimeType };
+      }
+      return { type: 'text', text: p.text || "" };
+    }).filter((p: any) => p.type === 'image' || (p.type === 'text' && p.text.trim().length > 0))
+  })).filter(m => m.content.length > 0);
 
-  if (model.provider === 'google') {
-    const apiKey = getSafeKey(config?.googleKey, process.env.GEMINI_API_KEY);
-    if (!apiKey) {
-      console.warn(`[AI SDK] Missing API Key for ${model.id}. Check environment variables or settings.`);
-    }
-    const google = createGoogleGenerativeAI({
-      apiKey: apiKey,
-    });
-    return google(model.id);
+  if (aiMessages.length === 0) {
+    aiMessages.push({ role: 'user', content: [{ type: 'text', text: '...' }] });
   }
 
-  if (model.provider === 'openai') {
-    const apiKey = getSafeKey(config?.openaiKey, process.env.OPENAI_API_KEY);
-    const openai = createOpenAI({
-      apiKey: apiKey,
-    });
-    return openai(model.id);
-  }
-
-  if (model.provider === 'anthropic') {
-    const apiKey = getSafeKey(config?.anthropicKey, process.env.ANTHROPIC_API_KEY);
-    const anthropic = createAnthropic({
-      apiKey: apiKey,
-    });
-    return anthropic(model.id);
-  }
-
-  if (model.provider === 'groq') {
-    const apiKey = getSafeKey(config?.groqKey, process.env.GROQ_API_KEY);
-    const groq = createOpenAI({
-      apiKey: apiKey,
-      baseURL: 'https://api.groq.com/openai/v1',
-    });
-    return groq(model.id.split('/').pop() || model.id);
-  }
-
-  if (model.provider === 'openrouter') {
-    const apiKey = getSafeKey(config?.openrouterKey, process.env.OPENROUTER_API_KEY);
-    const openrouter = createOpenAI({
-      apiKey: apiKey,
-      baseURL: 'https://openrouter.ai/api/v1',
-    });
-    return openrouter(model.id);
-  }
-
-  throw new Error(`Provider ${model.provider} not supported yet in AI SDK refactor`);
+  return aiMessages;
 }
 
 /**
@@ -103,59 +68,39 @@ export async function chatWithAI(
   config?: AIConfig,
   responseSchema?: any
 ) {
-  const modelProvider = getModelProvider(modelId, config);
-
-  // Convert messages to AI SDK format
-  const aiMessages = messages.map(m => ({
-    role: m.role === 'model' ? 'assistant' : 'user',
-    content: m.parts.map((p: any) => {
-      if (p.inlineData) {
-        return { type: 'image', image: p.inlineData.data, mimeType: p.inlineData.mimeType };
-      }
-      return { type: 'text', text: p.text || "" };
+  // Call server-side proxy to avoid CORS and keep keys secure
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      modelId,
+      messages: formatMessages(messages),
+      systemInstruction,
+      tools,
+      config,
+      responseSchema,
+      type: responseSchema ? 'object' : 'text'
     })
-  }));
-
-  // If we have a schema, we use generateObject for structured output
-  if (responseSchema && !tools) {
-    const { object } = await generateObject({
-      model: modelProvider,
-      system: systemInstruction,
-      messages: aiMessages as any,
-      schema: responseSchema || z.any(),
-      output: 'object',
-    });
-    return object;
-  }
-
-  // Standard text generation with tools
-  const { text, toolCalls } = await generateText({
-    model: modelProvider,
-    system: systemInstruction,
-    messages: aiMessages as any,
-    tools: tools,
   });
 
-  // Handle tool calls for backward compatibility with existing code
-  if (toolCalls && toolCalls.length > 0) {
-    return { 
-      text, 
-      functionCalls: toolCalls.map(tc => ({
-        name: tc.toolName,
-        args: (tc as any).args || (tc as any).arguments
-      }))
-    };
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `AI call failed with status ${response.status}`);
   }
 
-  // Try to parse JSON if expected
-  try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-  } catch (e) {}
+  const result = await response.json();
+  
+  if (responseSchema) {
+    return result.object;
+  }
 
-  return { text, suggestions: [] };
+  return {
+    text: result.text,
+    functionCalls: result.toolCalls?.map((tc: any) => ({
+      name: tc.toolName,
+      args: tc.args
+    }))
+  };
 }
 
 /**
@@ -170,79 +115,27 @@ export async function multiAgentChat(
   inventoryData?: any[],
   recipeData?: any[]
 ) {
-  const modelProvider = getModelProvider(modelId, config);
-
-  // Agent 1: Creative Chef (Proposal)
-  const creativePrompt = `
-    ${systemInstruction}
-    BẠN LÀ CREATIVE CHEF AGENT.
-    Nhiệm vụ: Đề xuất các món ăn, thực đơn hoặc giải pháp sáng tạo.
-    Hãy tập trung vào hương vị, trải nghiệm khách hàng và sự độc đáo.
-  `;
-
-  const { text: proposal } = await generateText({
-    model: modelProvider,
-    system: creativePrompt,
-    messages: messages.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.parts[0].text })) as any,
-  });
-
-  // Agent 2: Financial & Inventory Expert (Reviewer)
-  const financialPrompt = `
-    BẠN LÀ FINANCIAL & INVENTORY EXPERT.
-    Dữ liệu kho hiện tại: ${JSON.stringify(inventoryData?.slice(0, 20))}
-    Dữ liệu công thức hiện tại: ${JSON.stringify(recipeData?.slice(0, 10))}
-
-    Nhiệm vụ: Phân tích đề xuất của Creative Chef dưới góc độ chi phí và khả năng thực thi.
-    Đề xuất của Creative Chef: "${proposal}"
-
-    Hãy đưa ra các phản biện hoặc góp ý để tối ưu hóa lợi nhuận và sử dụng kho hiệu quả.
-    Nếu đề xuất tốt, hãy xác nhận. Nếu không, hãy chỉ ra điểm yếu (ví dụ: nguyên liệu đắt, thiếu hàng).
-  `;
-
-  const { text: review } = await generateText({
-    model: modelProvider,
-    system: financialPrompt,
-    messages: [{ role: 'user', content: "Hãy phân tích đề xuất trên." }] as any,
-  });
-
-  // Agent 3: Orchestrator (Final Response + HITL Actions)
-  const orchestratorPrompt = `
-    BẠN LÀ BẾP TRƯỞNG ĐIỀU PHỐI (ORCHESTRATOR).
-    Dưới đây là cuộc thảo luận nội bộ:
-    - Sáng tạo: ${proposal}
-    - Phản biện tài chính: ${review}
-
-    Nhiệm vụ:
-    1. Tổng hợp câu trả lời cuối cùng cho người dùng, thể hiện sự chuyên nghiệp và đã qua phân tích kỹ lưỡng.
-    2. Nếu cần thực hiện các hành động cụ thể (thêm món, cập nhật kho), hãy liệt kê chúng dưới dạng "Proposed Actions" để người dùng phê duyệt (HITL).
-
-    Định dạng trả về JSON:
-    {
-      "text": "Câu trả lời cuối cùng cho người dùng",
-      "internalMonologue": "Tóm tắt ngắn gọn quá trình thảo luận giữa các agent",
-      "proposedActions": [
-        { "type": "add_recipe", "data": { "title": "...", "ingredients": [...] }, "reason": "..." },
-        { "type": "update_inventory", "data": { "name": "...", "amount": 0 }, "reason": "..." }
-      ]
-    }
-  `;
-
-  const { object } = await generateObject({
-    model: modelProvider,
-    system: orchestratorPrompt,
-    messages: [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng." }] as any,
-    schema: z.object({
-      text: z.string(),
-      internalMonologue: z.string(),
-      proposedActions: z.array(z.object({
-        type: z.string(),
-        data: z.any(),
-        reason: z.string()
-      })).optional()
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      modelId,
+      messages: formatMessages(messages),
+      systemInstruction,
+      config,
+      inventoryData,
+      recipeData,
+      type: 'multi-agent'
     })
   });
 
-  return object;
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Multi-agent call failed with status ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.object;
 }
 
 /**
@@ -255,43 +148,27 @@ export async function generateProactiveInsights(
   recipes: any[],
   config?: AIConfig
 ) {
-  const modelProvider = getModelProvider(modelId, config);
-
-  const systemPrompt = `
-    BẠN LÀ KITCHEN INTELLIGENCE AGENT.
-    Nhiệm vụ: Phân tích dữ liệu kho và công thức để tìm ra các cơ hội tối ưu hóa.
-    
-    Dữ liệu kho: ${JSON.stringify(inventory.slice(0, 30))}
-    Dữ liệu công thức: ${JSON.stringify(recipes.slice(0, 20))}
-
-    Hãy đưa ra 3 insight quan trọng nhất. Ví dụ:
-    - Cảnh báo hết hàng cho nguyên liệu quan trọng.
-    - Gợi ý món ăn để giải phóng hàng tồn kho sắp hết hạn.
-    - Cảnh báo món ăn có lợi nhuận thấp do giá nguyên liệu tăng.
-
-    Trả về JSON:
-    {
-      "insights": [
-        { "title": "...", "description": "...", "type": "warning|tip|alert", "priority": "high|medium|low" }
-      ]
-    }
-  `;
-
-  const { object } = await generateObject({
-    model: modelProvider,
-    system: systemPrompt,
-    messages: [],
-    schema: z.object({
-      insights: z.array(z.object({
-        title: z.string(),
-        description: z.string(),
-        type: z.enum(['warning', 'tip', 'alert']),
-        priority: z.enum(['high', 'medium', 'low'])
-      }))
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      modelId,
+      messages: [],
+      systemInstruction: "", // Handled server-side for this type
+      config,
+      inventory,
+      recipes,
+      type: 'insights'
     })
   });
 
-  return object;
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || `Insights call failed with status ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.object;
 }
 
 /**

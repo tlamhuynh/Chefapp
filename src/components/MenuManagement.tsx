@@ -25,7 +25,7 @@ import {
   HelpCircle,
   Sparkles
 } from 'lucide-react';
-import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, updateDoc, doc, serverTimestamp } from '../lib/firebase';
+import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, getDocs } from '../lib/firebase';
 import { analyzeMenuImage } from '../lib/gemini';
 import { AVAILABLE_MODELS } from '../lib/ai';
 import { cn } from '../lib/utils';
@@ -94,6 +94,24 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     } catch (error) {
       console.error("Error analyzing menu:", error);
       setIsAnalyzing(false);
+    }
+  };
+
+  const cleanupInactiveInventory = async () => {
+    if (!auth.currentUser) return;
+    try {
+      const inactiveItems = inventory.filter(item => item.currentStock <= 0);
+      if (inactiveItems.length === 0) {
+        setNotification({ message: "Không có mặt hàng nào cần dọn dẹp.", type: 'success' });
+        return;
+      }
+      
+      const deletePromises = inactiveItems.map(item => deleteDoc(doc(db, 'inventory', item.id)));
+      await Promise.all(deletePromises);
+      setNotification({ message: `Đã xoá ${inactiveItems.length} mặt hàng hết kho.`, type: 'success' });
+    } catch (err) {
+      console.error("Inventory cleanup failed:", err);
+      setNotification({ message: "Không thể dọn dẹp kho hàng.", type: 'error' });
     }
   };
 
@@ -438,12 +456,22 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             exit={{ opacity: 0, x: 20 }}
             className="space-y-6"
           >
-            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-              {['Tất cả', 'Thực phẩm', 'Gia vị', 'Đồ uống', 'Khác'].map((cat) => (
-                <button key={cat} className="px-4 py-2 bg-white border border-neutral-100 rounded-xl text-xs font-bold text-neutral-500 whitespace-nowrap hover:bg-neutral-50 transition-colors">
-                  {cat}
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {['Tất cả', 'Thực phẩm', 'Gia vị', 'Đồ uống', 'Khác'].map((cat) => (
+                  <button key={cat} className="px-4 py-2 bg-white border border-neutral-100 rounded-xl text-xs font-bold text-neutral-500 whitespace-nowrap hover:bg-neutral-50 transition-colors">
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              <button 
+                onClick={cleanupInactiveInventory}
+                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all"
+                title="Xoá các mặt hàng đã hết kho"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Dọn dẹp kho</span>
+              </button>
             </div>
 
             <div className="bg-white rounded-2xl overflow-hidden border border-neutral-100">

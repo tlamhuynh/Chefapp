@@ -72,15 +72,27 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
   };
 
   const addIngredient = () => {
+    const newIngredients = [...editedRecipe.ingredients, { name: '', amount: '', unit: '', purchasePrice: 0, costPerAmount: 0 }];
+    const totalCost = newIngredients.reduce((sum: number, ing: any) => sum + (ing.costPerAmount || 0), 0);
+    const recommendedPrice = totalCost * 3;
     setEditedRecipe({
       ...editedRecipe,
-      ingredients: [...editedRecipe.ingredients, { name: '', amount: '', unit: '', purchasePrice: 0, costPerAmount: 0 }]
+      ingredients: newIngredients,
+      totalCost,
+      recommendedPrice
     });
   };
 
   const removeIngredient = (index: number) => {
     const newIngredients = editedRecipe.ingredients.filter((_: any, i: number) => i !== index);
-    setEditedRecipe({ ...editedRecipe, ingredients: newIngredients });
+    const totalCost = newIngredients.reduce((sum: number, ing: any) => sum + (ing.costPerAmount || 0), 0);
+    const recommendedPrice = totalCost * 3;
+    setEditedRecipe({ 
+      ...editedRecipe, 
+      ingredients: newIngredients,
+      totalCost,
+      recommendedPrice
+    });
   };
 
   const updateIngredient = (index: number, field: string, value: any) => {
@@ -90,7 +102,14 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
       }
       return ing;
     });
-    setEditedRecipe({ ...editedRecipe, ingredients: newIngredients });
+    const totalCost = newIngredients.reduce((sum: number, ing: any) => sum + (ing.costPerAmount || 0), 0);
+    const recommendedPrice = totalCost * 3;
+    setEditedRecipe({ 
+      ...editedRecipe, 
+      ingredients: newIngredients,
+      totalCost,
+      recommendedPrice
+    });
   };
 
   return (

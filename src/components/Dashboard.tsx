@@ -7,7 +7,7 @@ import { db, collection, addDoc, serverTimestamp, auth, query, where, orderBy, o
 import { RecipeDetail } from './RecipeDetail';
 import { OrderAnalysis } from './OrderAnalysis';
 import { validateRecipe, cn } from '../lib/utils';
-import { Lightbulb, AlertTriangle, TrendingUp, CheckCircle2, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Lightbulb, AlertTriangle, TrendingUp, CheckCircle2, Sparkles, ArrowRight, Loader2, AlertCircle, X } from 'lucide-react';
 import { Logo } from './Logo';
 
 interface DashboardProps {
@@ -27,6 +27,7 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
   const [selectedRecipe, setSelectedRecipe] = useState<any>(null);
   const [insights, setInsights] = useState<any[]>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchInsights = async () => {
@@ -52,8 +53,9 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
           aiConfig
         );
         setInsights(result.insights);
-      } catch (error) {
+      } catch (error: any) {
         console.error("Failed to fetch insights", error);
+        setError("Không thể tải phân tích thông minh. Vui lòng thử lại sau.");
       } finally {
         setIsLoadingInsights(false);
       }
@@ -168,6 +170,24 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
       exit={{ opacity: 0, y: -10 }}
       className="space-y-10 pb-10"
     >
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mx-2 bg-red-50 text-red-600 p-4 rounded-2xl text-xs flex items-center justify-between border border-red-100"
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+            <button onClick={() => setError(null)}>
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="flex justify-between items-end px-2">
         <div className="space-y-1">
           <p className="text-neutral-400 text-[10px] font-medium uppercase tracking-[0.2em]">SousChef AI</p>
@@ -265,7 +285,7 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
       </section>
 
       {/* Stats Section - Bento Grid */}
-      <section className="grid grid-cols-2 gap-4 px-2">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2">
         <div className="bg-neutral-900 rounded-3xl p-6 text-white space-y-6 relative overflow-hidden">
           <div className="flex justify-between items-start">
             <div className="p-2 bg-white/10 rounded-xl">
@@ -295,7 +315,7 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
       </section>
 
       {/* Quick Actions */}
-      <section className="grid grid-cols-2 gap-4 px-2">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2">
         <button
           onClick={() => setShowOrderAnalysis(true)}
           className="bg-neutral-50 p-5 rounded-3xl flex items-center gap-4 hover:bg-neutral-100 transition-all active:scale-95 group"

@@ -4,7 +4,7 @@ import { chatWithChef, ChatMessage, searchGoogleDriveTool, searchGooglePhotosToo
 import { chatWithAI, chatWithAIWithFallback, AVAILABLE_MODELS, AIModel, multiAgentChat } from '../lib/ai';
 import { getMemories, formatMemoriesForPrompt, extractMemoriesFromChat, Memory } from '../lib/memory';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle, Pencil, ListChecks, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paperclip, FileText, Video, Image as ImageIcon, Globe, Loader2, Search, Trash2, MessageSquare, AlertCircle, Pencil, ListChecks, ChevronDown, ChevronUp, Zap, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn, validateRecipe } from '../lib/utils';
 import { DollarSign, Clock, Utensils } from 'lucide-react';
@@ -151,7 +151,7 @@ interface ConversationData {
 
 interface ChefChatProps {
   preferences: any;
-  updatePreference: (key: string, value: string) => void;
+  updatePreference: (key: string, value: any) => void;
   setActiveTab?: (tab: any) => void;
 }
 
@@ -162,6 +162,7 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
   const [memories, setMemories] = useState<Memory[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showMonologue, setShowMonologue] = useState<Record<string, boolean>>({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | 'all' | null>(null);
   const [inputText, setInputText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [savingRecipeId, setSavingRecipeId] = useState<string | null>(null);
@@ -174,6 +175,7 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
   const [crawlUrl, setCrawlUrl] = useState('');
   const [isCrawling, setIsCrawling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
@@ -251,9 +253,43 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isActuallyTyping]);
 
+  const cleanupInactiveChats = async () => {
+    if (!auth.currentUser) return;
+    try {
+      setIsProcessing(true);
+      // 1. Delete all messages with status 'error'
+      const errorMsgQ = query(collection(db, 'chats'), where('userId', '==', auth.currentUser.uid), where('status', '==', 'error'));
+      const errorMsgSnapshot = await getDocs(errorMsgQ);
+      const deleteMsgPromises = errorMsgSnapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deleteMsgPromises);
+
+      // 2. Find and delete conversations with no messages
+      const convSnapshot = await getDocs(query(collection(db, 'conversations'), where('userId', '==', auth.currentUser.uid)));
+      for (const convDoc of convSnapshot.docs) {
+        const msgCheckQ = query(collection(db, 'chats'), where('conversationId', '==', convDoc.id));
+        const msgCheckSnapshot = await getDocs(msgCheckQ);
+        if (msgCheckSnapshot.empty) {
+          await deleteDoc(convDoc.ref);
+          if (activeConversationId === convDoc.id) {
+            setActiveConversationId(null);
+            setMessages([]);
+          }
+        }
+      }
+      setError("Đã dọn dẹp dữ liệu chat không hoạt động.");
+      setTimeout(() => setError(null), 3000);
+    } catch (err) {
+      console.error("Cleanup failed:", err);
+      setError("Không thể dọn dẹp dữ liệu.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const deleteConversation = async (id: string) => {
     if (!auth.currentUser) return;
     try {
+      setIsProcessing(true);
       await deleteDoc(doc(db, 'conversations', id));
       // Also delete messages in this conversation
       const msgQ = query(collection(db, 'chats'), where('conversationId', '==', id));
@@ -265,8 +301,40 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
         setActiveConversationId(null);
         setMessages([]);
       }
+      setShowDeleteConfirm(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'conversations');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const deleteAllHistory = async () => {
+    if (!auth.currentUser) return;
+    try {
+      setIsProcessing(true);
+      const convQ = query(collection(db, 'conversations'), where('userId', '==', auth.currentUser.uid));
+      const convSnapshot = await getDocs(convQ);
+      
+      const msgQ = query(collection(db, 'chats'), where('userId', '==', auth.currentUser.uid));
+      const msgSnapshot = await getDocs(msgQ);
+      
+      const deletePromises = [
+        ...convSnapshot.docs.map(d => deleteDoc(d.ref)),
+        ...msgSnapshot.docs.map(d => deleteDoc(d.ref))
+      ];
+      
+      await Promise.all(deletePromises);
+      setActiveConversationId(null);
+      setMessages([]);
+      setShowDeleteConfirm(null);
+      setError("Đã xóa toàn bộ lịch sử chat.");
+      setTimeout(() => setError(null), 3000);
+    } catch (err) {
+      console.error("Delete all failed:", err);
+      setError("Không thể xóa toàn bộ lịch sử.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -515,6 +583,7 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
     try {
       // Mark as processing in Firestore
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'processing' });
+      setError(null);
       
       let history: ChatMessage[] = allMessages.filter(m => m.id !== userMsg.id).map(m => ({
         role: m.sender === 'user' ? 'user' : 'model',
@@ -575,8 +644,8 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
 
     } catch (aiError: any) {
       console.error("AI Call failed:", aiError);
+      setError(aiError.message || "Bếp trưởng đang bận hoặc có lỗi kết nối. Vui lòng thử lại.");
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
-      // ... error handling logic ...
     } finally {
       isProcessingRef.current = false;
       setIsProcessing(false);
@@ -803,23 +872,25 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
     ]
   };
   
-  const filteredMessages = messages.filter(m => 
-    m.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (m.recipe?.title && m.recipe.title.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredMessages = messages.filter(m => {
+    const text = m.text || '';
+    const query = searchQuery || '';
+    return text.toLowerCase().includes(query.toLowerCase()) ||
+           (m.recipe?.title && m.recipe.title.toLowerCase().includes(query.toLowerCase()));
+  });
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className={cn("flex flex-col h-[calc(100vh-80px)] transition-colors duration-500", preferences.chatBackground)}
+      className={cn("flex flex-col h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] transition-colors duration-500", preferences.chatBackground)}
     >
-      <header className="p-4 bg-white border-b border-neutral-100 sticky top-0 z-30">
+      <header className="p-4 bg-white border-b border-neutral-100 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Logo size={32} />
-            <div>
+          <div className={cn("flex items-center gap-2 md:gap-3", showMobileSearch && "hidden sm:flex")}>
+            <Logo size={28} />
+            <div className="min-w-0">
               {editingTitle && activeConversationId ? (
                 <div className="flex items-center gap-2">
                   <input
@@ -829,13 +900,13 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
                     onBlur={() => updateConversationTitle(activeConversationId, tempTitle)}
                     onKeyDown={(e) => e.key === 'Enter' && updateConversationTitle(activeConversationId, tempTitle)}
                     autoFocus
-                    className="text-sm font-semibold text-neutral-900 border-b border-neutral-900 focus:outline-none bg-transparent"
+                    className="text-xs md:text-sm font-semibold text-neutral-900 border-b border-neutral-900 focus:outline-none bg-transparent w-24 md:w-auto"
                   />
                 </div>
               ) : (
-                <div className="flex items-center gap-2 group">
+                <div className="flex items-center gap-1 md:gap-2 group">
                   <h1 
-                    className="font-semibold text-neutral-900 text-sm cursor-pointer hover:text-orange-600 transition-colors"
+                    className="font-semibold text-neutral-900 text-[11px] md:text-sm cursor-pointer hover:text-orange-600 transition-colors truncate max-w-[80px] md:max-w-none"
                     onClick={() => {
                       if (activeConversationId) {
                         const currentConv = conversations.find(c => c.id === activeConversationId);
@@ -850,7 +921,7 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
                     }
                   </h1>
                   {activeConversationId && (
-                    <Pencil className="w-3 h-3 text-neutral-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Pencil className="w-3 h-3 text-neutral-300 opacity-0 group-hover:opacity-100 transition-opacity hidden md:block" />
                   )}
                 </div>
               )}
@@ -903,6 +974,19 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
               className="p-2 md:hidden hover:bg-stone-100 rounded-lg text-stone-500 transition-colors"
             >
               <Search className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => updatePreference('showInternalThoughts', !preferences.showInternalThoughts)}
+              className={cn(
+                "p-2 hover:bg-stone-100 rounded-lg transition-colors group relative",
+                preferences.showInternalThoughts ? "text-orange-600" : "text-stone-400"
+              )}
+              title={preferences.showInternalThoughts ? "Ẩn suy nghĩ AI" : "Hiện suy nghĩ AI"}
+            >
+              <Sparkles className="w-5 h-5" />
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-900 text-white text-[8px] font-bold uppercase tracking-widest rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                {preferences.showInternalThoughts ? "Ẩn suy nghĩ" : "Hiện suy nghĩ"}
+              </div>
             </button>
             <button
               onClick={() => setShowHistory(!showHistory)}
@@ -1071,6 +1155,57 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
         {/* Settings modal removed and moved to Profile */}
 
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Delete Confirmation Modal */}
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4"
+              >
+                <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+                  <Trash2 className="w-6 h-6 text-red-500" />
+                </div>
+                <div className="text-center space-y-2">
+                  <h3 className="text-lg font-bold text-neutral-900">
+                    {showDeleteConfirm === 'all' ? "Xóa tất cả lịch sử?" : "Xóa cuộc hội thoại này?"}
+                  </h3>
+                  <p className="text-xs text-neutral-500 leading-relaxed">
+                    Hành động này không thể hoàn tác. Toàn bộ tin nhắn liên quan sẽ bị xóa vĩnh viễn khỏi hệ thống.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowDeleteConfirm(null)}
+                    className="flex-1 py-3 bg-neutral-100 text-neutral-600 rounded-xl text-xs font-bold hover:bg-neutral-200 transition-all"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (showDeleteConfirm === 'all') {
+                        deleteAllHistory();
+                      } else {
+                        deleteConversation(showDeleteConfirm);
+                      }
+                    }}
+                    className="flex-1 py-3 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 shadow-lg shadow-red-600/20 transition-all"
+                  >
+                    Xác nhận xóa
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Sidebar for History */}
         <AnimatePresence>
           {showHistory && (
@@ -1081,22 +1216,47 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
               className="absolute md:relative z-40 w-[280px] h-full bg-white border-r border-stone-200 flex flex-col shadow-xl md:shadow-none"
             >
               <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-                <h2 className="font-bold text-stone-900 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-orange-500" />
-                  Lịch sử Chat
-                </h2>
-                <button 
-                  onClick={() => {
-                    setActiveConversationId(null);
-                    setMessages([]);
-                    setEditingTitle(false);
-                    setTempTitle('');
-                  }}
-                  className="p-1.5 hover:bg-orange-50 text-orange-600 rounded-lg transition-colors"
-                  title="Chat mới"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setShowHistory(false)}
+                    className="p-1.5 md:hidden hover:bg-stone-100 text-stone-500 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <h2 className="font-bold text-stone-900 flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-orange-500" />
+                    Lịch sử
+                  </h2>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => setShowDeleteConfirm('all')}
+                    className="p-1.5 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                    title="Xóa tất cả"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={cleanupInactiveChats}
+                    className="p-1.5 hover:bg-stone-100 text-stone-500 rounded-lg transition-colors"
+                    title="Dọn dẹp lỗi"
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setActiveConversationId(null);
+                      setMessages([]);
+                      setEditingTitle(false);
+                      setTempTitle('');
+                      if (window.innerWidth < 768) setShowHistory(false);
+                    }}
+                    className="p-1.5 hover:bg-orange-50 text-orange-600 rounded-lg transition-colors"
+                    title="Chat mới"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
               
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -1136,9 +1296,9 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteConversation(conv.id);
+                          setShowDeleteConfirm(conv.id);
                         }}
-                        className="absolute top-3 right-2 p-1 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all"
+                        className="absolute top-3 right-2 p-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-red-500 transition-all"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -1194,7 +1354,7 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.05 }}
             className={cn(
-              "flex gap-4 max-w-[90%] md:max-w-[85%]",
+              "flex gap-4 w-full max-w-2xl",
               msg.sender === 'user' ? "ml-auto flex-row-reverse" : "mr-auto"
             )}
           >
@@ -1240,7 +1400,7 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                 </div>
 
-                {msg.internalMonologue && (
+                {preferences.showInternalThoughts && msg.internalMonologue && (
                   <div className="mt-2 overflow-hidden rounded-xl border border-stone-100/50">
                     <button 
                       onClick={() => setShowMonologue(prev => ({ ...prev, [msg.id]: !prev[msg.id] }))}
@@ -1421,6 +1581,57 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
       <div className="p-4 bg-white border-t border-neutral-100">
         <div className="max-w-4xl mx-auto space-y-4">
           <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="bg-red-50 text-red-600 px-4 py-3 rounded-2xl text-xs space-y-3 border border-red-100 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span className="font-medium">{error}</span>
+                  </div>
+                  <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 rounded-full transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                {(error.includes("Quota") || error.includes("hạn mức") || error.includes("không tìm thấy")) && (
+                  <div className="flex flex-wrap gap-2 pt-1 border-t border-red-100">
+                    <p className="w-full text-[10px] text-red-500 font-bold uppercase tracking-wider mb-1">Thử chuyển sang model khác:</p>
+                    <button
+                      onClick={() => handleSuggestionClick({ label: 'Groq', action: 'switch_to_gemini' })}
+                      className="px-3 py-1.5 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3 h-3 text-orange-500" />
+                      <span>Gemini 2.0 (Mặc định)</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        updatePreference('selectedModelId', 'groq/llama-3.3-70b-versatile');
+                        setError(null);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all flex items-center gap-1.5"
+                    >
+                      <Zap className="w-3 h-3 text-blue-500" />
+                      <span>Llama 3.3 (Groq - Siêu nhanh)</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        updatePreference('selectedModelId', 'nvidia/meta/llama-3.1-405b-instruct');
+                        setError(null);
+                      }}
+                      className="px-3 py-1.5 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-all flex items-center gap-1.5"
+                    >
+                      <Cpu className="w-3 h-3 text-green-500" />
+                      <span>Llama 405B (NVIDIA - Cực mạnh)</span>
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
             {fileError && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
