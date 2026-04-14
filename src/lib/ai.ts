@@ -15,9 +15,9 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', provider: 'google', description: 'Cân bằng & Nhanh. Phù hợp cho hầu hết các tác vụ.' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi tiết và lập luận phức tạp.' },
-  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B', provider: 'google', description: 'Siêu nhanh & Tiết kiệm cho các tác vụ đơn giản.' },
+  { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash', provider: 'google', description: 'Cân bằng & Nhanh. Phù hợp cho hầu hết các tác vụ.' },
+  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', provider: 'google', description: 'Mạnh mẽ nhất. Phân tích chi tiết và lập luận phức tạp.' },
+  { id: 'gemini-1.5-flash-8b-latest', name: 'Gemini 1.5 Flash-8B', provider: 'google', description: 'Siêu nhanh & Tiết kiệm cho các tác vụ đơn giản.' },
   { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'openai', description: 'Siêu tiết kiệm. Phản hồi cực nhanh, thông minh vượt trội.' },
   { id: 'claude-3-5-sonnet-20240620', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'openrouter/deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', provider: 'openrouter', description: 'Model mã nguồn mở mạnh mẽ nhất từ Trung Quốc.' },
@@ -37,38 +37,52 @@ export interface AIConfig {
 function getModelProvider(modelId: string, config?: AIConfig) {
   const model = AVAILABLE_MODELS.find(m => m.id === modelId) || AVAILABLE_MODELS[0];
   
+  const getSafeKey = (key?: string, envKey?: string) => {
+    if (key && key.trim().length > 0) return key;
+    if (envKey && envKey !== 'undefined' && envKey.length > 0) return envKey;
+    return undefined;
+  };
+
   if (model.provider === 'google') {
+    const apiKey = getSafeKey(config?.googleKey, process.env.GEMINI_API_KEY);
+    if (!apiKey) {
+      console.warn(`[AI SDK] Missing API Key for ${model.id}. Check environment variables or settings.`);
+    }
     const google = createGoogleGenerativeAI({
-      apiKey: config?.googleKey || process.env.GEMINI_API_KEY,
+      apiKey: apiKey,
     });
     return google(model.id);
   }
 
   if (model.provider === 'openai') {
+    const apiKey = getSafeKey(config?.openaiKey, process.env.OPENAI_API_KEY);
     const openai = createOpenAI({
-      apiKey: config?.openaiKey || process.env.OPENAI_API_KEY,
+      apiKey: apiKey,
     });
     return openai(model.id);
   }
 
   if (model.provider === 'anthropic') {
+    const apiKey = getSafeKey(config?.anthropicKey, process.env.ANTHROPIC_API_KEY);
     const anthropic = createAnthropic({
-      apiKey: config?.anthropicKey || process.env.ANTHROPIC_API_KEY,
+      apiKey: apiKey,
     });
     return anthropic(model.id);
   }
 
   if (model.provider === 'groq') {
+    const apiKey = getSafeKey(config?.groqKey, process.env.GROQ_API_KEY);
     const groq = createOpenAI({
-      apiKey: config?.groqKey || process.env.GROQ_API_KEY,
+      apiKey: apiKey,
       baseURL: 'https://api.groq.com/openai/v1',
     });
     return groq(model.id.split('/').pop() || model.id);
   }
 
   if (model.provider === 'openrouter') {
+    const apiKey = getSafeKey(config?.openrouterKey, process.env.OPENROUTER_API_KEY);
     const openrouter = createOpenAI({
-      apiKey: config?.openrouterKey || process.env.OPENROUTER_API_KEY,
+      apiKey: apiKey,
       baseURL: 'https://openrouter.ai/api/v1',
     });
     return openrouter(model.id);

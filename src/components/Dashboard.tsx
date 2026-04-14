@@ -2,19 +2,21 @@ import { useState, useEffect } from 'react';
 import { Search, Plus, Camera, DollarSign, ShoppingBag, ChefHat, ChevronRight, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateRecipe, analyzeMenuImage } from '../lib/gemini';
-import { generateProactiveInsights } from '../lib/ai';
+import { generateProactiveInsights, AVAILABLE_MODELS } from '../lib/ai';
 import { db, collection, addDoc, serverTimestamp, auth, query, where, orderBy, onSnapshot, getDocs } from '../lib/firebase';
 import { RecipeDetail } from './RecipeDetail';
 import { OrderAnalysis } from './OrderAnalysis';
 import { validateRecipe, cn } from '../lib/utils';
 import { Lightbulb, AlertTriangle, TrendingUp, CheckCircle2, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Logo } from './Logo';
 
 interface DashboardProps {
   setActiveTab: (tab: any) => void;
   preferences?: any;
+  updatePreference?: (key: string, value: string) => void;
 }
 
-export function Dashboard({ setActiveTab, preferences }: DashboardProps) {
+export function Dashboard({ setActiveTab, preferences, updatePreference }: DashboardProps) {
   const [theme, setTheme] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedRecipe, setGeneratedRecipe] = useState<any>(null);
@@ -44,7 +46,7 @@ export function Dashboard({ setActiveTab, preferences }: DashboardProps) {
         } : undefined;
 
         const result = await generateProactiveInsights(
-          preferences?.selectedModelId || 'gemini-3.1-flash-lite-preview',
+          preferences?.selectedModelId || 'gemini-1.5-flash-latest',
           inventory,
           recipes,
           aiConfig
@@ -171,12 +173,28 @@ export function Dashboard({ setActiveTab, preferences }: DashboardProps) {
           <p className="text-neutral-400 text-[10px] font-medium uppercase tracking-[0.2em]">SousChef AI</p>
           <h1 className="text-4xl font-semibold text-neutral-900 tracking-tight">Xin chào, Chef</h1>
         </div>
-        <button 
-          onClick={() => setActiveTab('profile')}
-          className="w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center hover:bg-neutral-100 transition-all active:scale-95"
-        >
-          <ChefHat className="w-6 h-6 text-neutral-900" />
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button 
+            onClick={() => setActiveTab('profile')}
+            className="w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center hover:bg-neutral-100 transition-all active:scale-95"
+          >
+            <Logo size={28} variant="stone" />
+          </button>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">Model</span>
+            <select
+              value={preferences?.selectedModelId}
+              onChange={(e) => updatePreference?.('selectedModelId', e.target.value)}
+              className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[9px] appearance-none hover:text-orange-700 transition-colors text-right"
+            >
+              {AVAILABLE_MODELS.map(m => (
+                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </header>
 
       {/* Hero Section - Smart Search/Generate */}

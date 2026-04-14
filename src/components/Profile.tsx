@@ -416,22 +416,31 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                       </button>
                       <div className="space-y-3">
                         {AVAILABLE_MODELS.map(model => (
-                          <div key={model.id} className="flex items-center justify-between p-5 bg-white rounded-xl border border-neutral-100 shadow-sm">
-                            <div className="flex items-center gap-4">
-                              <div className={cn(
-                                "w-2.5 h-2.5 rounded-full shadow-sm",
-                                apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
-                                apiStatus[model.id]?.status === 'error' ? "bg-red-500" : "bg-neutral-200"
-                              )} />
-                              <span className="text-sm font-bold text-neutral-800">{model.name}</span>
+                          <div key={model.id} className="space-y-2">
+                            <div className="flex items-center justify-between p-5 bg-white rounded-xl border border-neutral-100 shadow-sm">
+                              <div className="flex items-center gap-4">
+                                <div className={cn(
+                                  "w-2.5 h-2.5 rounded-full shadow-sm",
+                                  apiStatus[model.id]?.status === 'ok' ? "bg-green-500" :
+                                  apiStatus[model.id]?.status === 'error' ? "bg-red-500" : "bg-neutral-200"
+                                )} />
+                                <span className="text-sm font-bold text-neutral-800">{model.name}</span>
+                              </div>
+                              <span className={cn(
+                                "text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg",
+                                apiStatus[model.id]?.status === 'ok' ? "text-green-600 bg-green-50" : 
+                                apiStatus[model.id]?.status === 'error' ? "text-red-600 bg-red-50" : "text-neutral-400 bg-neutral-50"
+                              )}>
+                                {apiStatus[model.id]?.status === 'ok' ? 'Sẵn sàng' : apiStatus[model.id]?.status === 'error' ? 'Lỗi' : 'Chờ kiểm tra'}
+                              </span>
                             </div>
-                            <span className={cn(
-                              "text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-lg",
-                              apiStatus[model.id]?.status === 'ok' ? "text-green-600 bg-green-50" : 
-                              apiStatus[model.id]?.status === 'error' ? "text-red-600 bg-red-50" : "text-neutral-400 bg-neutral-50"
-                            )}>
-                              {apiStatus[model.id]?.status === 'ok' ? 'Sẵn sàng' : apiStatus[model.id]?.status === 'error' ? 'Lỗi' : 'Chờ kiểm tra'}
-                            </span>
+                            {apiStatus[model.id]?.status === 'error' && apiStatus[model.id]?.message && (
+                              <div className="px-5 py-2 bg-red-50/50 rounded-lg border border-red-100/50">
+                                <p className="text-[10px] text-red-600 font-medium leading-relaxed italic">
+                                  {apiStatus[model.id]?.message}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

@@ -8,6 +8,7 @@ import { Send, ChefHat, User, Sparkles, Settings, X, Palette, Save, Check, Paper
 import ReactMarkdown from 'react-markdown';
 import { cn, validateRecipe } from '../lib/utils';
 import { DollarSign, Clock, Utensils } from 'lucide-react';
+import { Logo } from './Logo';
 
 interface RecipeData {
   title: string;
@@ -151,9 +152,10 @@ interface ConversationData {
 interface ChefChatProps {
   preferences: any;
   updatePreference: (key: string, value: string) => void;
+  setActiveTab?: (tab: any) => void;
 }
 
-export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
+export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefChatProps) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -169,6 +171,8 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
   const [googleToken, setGoogleToken] = useState<string | null>(null);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isRecipeCrawActive, setIsRecipeCrawActive] = useState(false);
+  const [crawlUrl, setCrawlUrl] = useState('');
+  const [isCrawling, setIsCrawling] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -378,6 +382,83 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
 
   const searchKeep = async (searchQuery: string) => {
     return `Tính năng tìm kiếm Google Keep đang được đồng bộ. Bạn có thể kiểm tra trực tiếp tại [Google Keep](https://keep.google.com/) với từ khóa: "${searchQuery}".`;
+  };
+
+  const handleDirectCrawl = async () => {
+    if (!crawlUrl || !auth.currentUser) return;
+    
+    setIsCrawling(true);
+    try {
+      const crawlResult = await crawlRecipe(crawlUrl);
+      
+      const prompt = `Tôi vừa lấy được dữ liệu thô từ một trang web nấu ăn:
+${crawlResult}
+
+Hãy phân tích và chuyển đổi dữ liệu này thành một công thức nấu ăn chuyên nghiệp. 
+Định lượng nguyên liệu nếu thiếu (ước tính hợp lý). 
+Tính toán chi phí ước tính (Food Cost) cho mỗi nguyên liệu.
+Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
+
+      const aiConfig = { 
+        openaiKey: preferences.openaiKey, 
+        anthropicKey: preferences.anthropicKey, 
+        googleKey: preferences.googleKey,
+        openrouterKey: preferences.openrouterKey,
+        nvidiaKey: preferences.nvidiaKey,
+        groqKey: preferences.groqKey
+      };
+
+      const aiResponse = await chatWithChef(
+        [{ role: 'user', parts: [{ text: prompt }] }],
+        undefined,
+        preferences.googleKey,
+        preferences.selectedModelId
+      );
+
+      if (aiResponse && aiResponse.recipe) {
+        let convId = activeConversationId;
+        if (!convId) {
+          try {
+            const convRef = await addDoc(collection(db, 'conversations'), {
+              title: aiResponse.recipe.title,
+              userId: auth.currentUser.uid,
+              lastMessage: `Đã tìm nạp công thức: ${aiResponse.recipe.title}`,
+              updatedAt: serverTimestamp(),
+              createdAt: serverTimestamp()
+            });
+            convId = convRef.id;
+            setActiveConversationId(convId);
+          } catch (err) {
+            console.error("Failed to create conversation for crawl:", err);
+            return;
+          }
+        }
+
+        // Add to chat
+        const aiMsgId = Math.random().toString(36).substring(7);
+        await setDoc(doc(db, 'chats', aiMsgId), {
+          text: aiResponse.text || `Đã tìm nạp thành công công thức: ${aiResponse.recipe.title}`,
+          sender: 'ai',
+          userId: auth.currentUser.uid,
+          conversationId: convId,
+          timestamp: serverTimestamp(),
+          recipe: aiResponse.recipe,
+          status: 'completed'
+        });
+        
+        await updateDoc(doc(db, 'conversations', convId), {
+          updatedAt: serverTimestamp(),
+          lastMessage: `Đã tìm nạp công thức: ${aiResponse.recipe.title}`
+        });
+        
+        setCrawlUrl('');
+        setIsRecipeCrawActive(false);
+      }
+    } catch (error) {
+      console.error("Direct crawl error:", error);
+    } finally {
+      setIsCrawling(false);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -604,7 +685,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       return;
     }
     if (suggestion.action === 'switch_to_gemini') {
-      updatePreference('selectedModelId', 'gemini-3.1-flash-lite-preview');
+      updatePreference('selectedModelId', 'gemini-1.5-flash-latest');
       // After switching, trigger a retry automatically
       const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
       if (lastUserMsg) {
@@ -737,9 +818,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
       <header className="p-4 bg-white border-b border-neutral-100 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center">
-              <ChefHat className="w-5 h-5 text-white" />
-            </div>
+            <Logo size={32} />
             <div>
               {editingTitle && activeConversationId ? (
                 <div className="flex items-center gap-2">
@@ -781,9 +860,17 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                   Trực tuyến
                 </div>
                 <span className="text-stone-300">•</span>
-                <span className="font-bold text-orange-600 uppercase tracking-widest">
-                  {AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name || preferences.selectedModelId}
-                </span>
+                <select
+                  value={preferences.selectedModelId}
+                  onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+                  className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[10px] appearance-none hover:text-orange-700 transition-colors"
+                >
+                  {AVAILABLE_MODELS.map(m => (
+                    <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -850,7 +937,7 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
               {googleToken && <span className="hidden lg:inline">Google</span>}
             </button>
             <button 
-              onClick={() => {}} // Settings moved to Profile
+              onClick={() => setActiveTab?.('profile')}
               className={cn(
                 "p-2 rounded-lg transition-colors hover:bg-stone-100 text-stone-500"
               )}
@@ -941,6 +1028,40 @@ export function ChefChat({ preferences, updatePreference }: ChefChatProps) {
                     <span className="text-[10px] text-orange-700">Ưu tiên dữ liệu cá nhân</span>
                   </label>
                 </div>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <div className="relative flex-1">
+                  <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-orange-400" />
+                  <input
+                    type="url"
+                    placeholder="Nhập URL công thức (ví dụ: cookpad.com/recipe/...)"
+                    value={crawlUrl}
+                    onChange={(e) => setCrawlUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleDirectCrawl()}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-orange-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                  />
+                </div>
+                <button
+                  onClick={handleDirectCrawl}
+                  disabled={isCrawling || !crawlUrl}
+                  className={cn(
+                    "px-6 py-2 bg-orange-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-orange-600/20 hover:bg-orange-700 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50 disabled:scale-100",
+                    isCrawling && "animate-pulse"
+                  )}
+                >
+                  {isCrawling ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang tìm nạp...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Tìm nạp ngay</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </motion.div>

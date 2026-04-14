@@ -3,6 +3,7 @@ import { db, collection, query, where, orderBy, onSnapshot, auth } from '../lib/
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChefHat, Search, Calendar, DollarSign, ChevronRight } from 'lucide-react';
 import { RecipeDetail } from './RecipeDetail';
+import { Logo } from './Logo';
 
 export function RecipeList() {
   const [recipes, setRecipes] = useState<any[]>([]);
@@ -56,7 +57,7 @@ export function RecipeList() {
         {loading ? (
           <div className="flex justify-center py-12">
             <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-              <ChefHat className="w-8 h-8 text-stone-300" />
+              <Logo size={48} variant="stone" className="opacity-20" />
             </motion.div>
           </div>
         ) : filteredRecipes.length > 0 ? (
@@ -67,7 +68,7 @@ export function RecipeList() {
               className="w-full bg-white p-5 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all text-left flex items-center gap-4 group"
             >
               <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center group-hover:bg-orange-50 transition-colors">
-                <ChefHat className="w-7 h-7 text-stone-400 group-hover:text-orange-500 transition-colors" />
+                <Logo size={28} variant="stone" className="opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-stone-900 truncate">{recipe.title}</h3>

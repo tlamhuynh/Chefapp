@@ -12,6 +12,7 @@ import { Gallery } from './components/Gallery';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Logo, LogoText } from './components/Logo';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -21,7 +22,7 @@ export default function App() {
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-1.5-flash',
+    selectedModelId: 'gemini-1.5-flash-latest',
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',
@@ -110,7 +111,7 @@ export default function App() {
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
         >
-          <ChefHat className="w-12 h-12 text-orange-600" />
+          <Logo size={48} />
         </motion.div>
       </div>
     );
@@ -125,16 +126,16 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-stone-100"
           >
-            <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <ChefHat className="w-10 h-10 text-orange-600" />
+            <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Logo size={48} />
             </div>
             <h1 className="text-3xl font-bold text-stone-900 mb-2">SousChef AI</h1>
-            <p className="text-stone-600 mb-8">Trợ lý bếp chuyên nghiệp của bạn. Tạo công thức, tính giá cost và tư vấn chuyên gia. (Phiên bản Local)</p>
+            <p className="text-stone-600 mb-8">Trợ lý bếp chuyên nghiệp của bạn. Tạo công thức, tính giá cost và tư vấn chuyên gia.</p>
             <button
               onClick={handleLogin}
               className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-orange-200"
             >
-              <ChefHat className="w-5 h-5" />
+              <Logo size={20} variant="white" />
               Bắt đầu ngay
             </button>
           </motion.div>
@@ -199,12 +200,12 @@ export default function App() {
 
           <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
             <AnimatePresence mode="wait">
-              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} preferences={preferences} />}
-              {activeTab === 'menu' && <MenuManagement key="menu" setActiveTab={setActiveTab} preferences={preferences} />}
+              {activeTab === 'dashboard' && <Dashboard key="dashboard" setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
+              {activeTab === 'menu' && <MenuManagement key="menu" setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
               {activeTab === 'recipes' && <RecipeList key="recipes" />}
-              {activeTab === 'generator' && <RecipeGenerator key="generator" preferences={preferences} setActiveTab={setActiveTab} />}
-              {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} setActiveTab={setActiveTab} />}
-              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} />}
+              {activeTab === 'generator' && <RecipeGenerator key="generator" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+              {activeTab === 'creative' && <CreativeAgent key="creative" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+              {activeTab === 'chat' && <ChefChat key="chat" preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
               {activeTab === 'gallery' && <Gallery key="gallery" />}
               {activeTab === 'profile' && <Profile key="profile" user={user} preferences={preferences} updatePreference={updatePreference} />}
             </AnimatePresence>

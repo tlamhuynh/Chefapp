@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package } from 'lucide-react';
 import { generateRecipe } from '../lib/gemini';
+import { AVAILABLE_MODELS } from '../lib/ai';
 import { db, collection, addDoc, serverTimestamp, auth, getDocs } from '../lib/firebase';
 import { validateRecipe, cn } from '../lib/utils';
 
 interface RecipeGeneratorProps {
   preferences: any;
+  updatePreference: (key: string, value: string) => void;
   setActiveTab: (tab: any) => void;
 }
 
-export function RecipeGenerator({ preferences, setActiveTab }: RecipeGeneratorProps) {
+export function RecipeGenerator({ preferences, updatePreference, setActiveTab }: RecipeGeneratorProps) {
   const [theme, setTheme] = useState('');
   const [ingredientInput, setIngredientInput] = useState('');
   const [ingredients, setIngredients] = useState<string[]>([]);
@@ -118,11 +120,27 @@ export function RecipeGenerator({ preferences, setActiveTab }: RecipeGeneratorPr
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 px-4">
       <header className="space-y-2">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-orange-100 rounded-2xl">
-            <Wand2 className="w-6 h-6 text-orange-600" />
+        <div className="flex justify-between items-start">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-orange-100 rounded-2xl">
+              <Wand2 className="w-6 h-6 text-orange-600" />
+            </div>
+            <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Sáng tạo Công thức AI</h1>
           </div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Sáng tạo Công thức AI</h1>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Mô hình AI</span>
+            <select
+              value={preferences.selectedModelId}
+              onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+              className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[10px] appearance-none hover:text-orange-700 transition-colors text-right"
+            >
+              {AVAILABLE_MODELS.map(m => (
+                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <p className="text-stone-500 text-sm">Kết hợp chủ đề và nguyên liệu để tạo ra những món ăn độc bản.</p>
       </header>

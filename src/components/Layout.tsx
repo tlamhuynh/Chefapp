@@ -2,6 +2,7 @@ import React from 'react';
 import { LayoutDashboard, BookOpen, MessageSquare, User, Palette, ClipboardList, Image as ImageIcon, Wand2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { LogoText } from './Logo';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -23,7 +24,17 @@ export function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <main className="flex-1 w-full max-w-lg mx-auto relative pb-32 pt-8">
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-neutral-100 z-40 flex items-center px-6">
+        <div className="w-full max-w-lg mx-auto flex justify-between items-center">
+          <LogoText />
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Live</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 w-full max-w-lg mx-auto relative pb-32 pt-20">
         <div className="px-4">
           {children}
         </div>

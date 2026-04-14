@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { chatWithAI } from './ai';
 
-export const chefModel = "gemini-3-flash-preview";
+export const chefModel = "gemini-1.5-flash-latest";
 
 export const systemInstruction = `
 Bạn là một Bếp trưởng điều hành (Executive Chef) với hơn 20 năm kinh nghiệm tại các khách sạn 5 sao quốc tế. Bạn sở hữu tư duy nghệ thuật ẩm thực tinh tế cùng kỹ năng quản trị kinh doanh nhà hàng sắc bén.

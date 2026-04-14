@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { LocalDb } from '../lib/localDb';
 import { creativeAgentInstruction, ChatMessage } from '../lib/gemini';
-import { chatWithAIWithFallback } from '../lib/ai';
+import { chatWithAIWithFallback, AVAILABLE_MODELS } from '../lib/ai';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Palette, Sparkles, User, Loader2, Paperclip, X, Image as ImageIcon, Layout, Camera, Share2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -15,7 +15,7 @@ interface ChatMessageData {
   suggestions?: { label: string; action: string }[];
 }
 
-export function CreativeAgent({ preferences, setActiveTab }: { preferences: any, setActiveTab: (tab: any) => void }) {
+export function CreativeAgent({ preferences, updatePreference, setActiveTab }: { preferences: any, updatePreference: (key: string, value: string) => void, setActiveTab: (tab: any) => void }) {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -72,7 +72,7 @@ export function CreativeAgent({ preferences, setActiveTab }: { preferences: any,
 
       // Define fallback chain
       const fallbacks = [
-        'gemini-3.1-flash-lite-preview',
+        'gemini-1.5-flash-latest',
         'openrouter/deepseek/deepseek-chat',
         'groq/llama-3.3-70b-versatile'
       ].filter(id => id !== preferences.selectedModelId);
@@ -154,8 +154,21 @@ export function CreativeAgent({ preferences, setActiveTab }: { preferences: any,
             <h1 className="text-3xl font-display font-bold text-stone-900 tracking-tight">Sáng tạo</h1>
             <p className="text-stone-400 text-[10px] font-bold uppercase tracking-[0.2em]">Branding • Styling • Content</p>
           </div>
-          <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center shadow-xl shadow-stone-200">
-            <Palette className="w-6 h-6 text-white" />
+          <div className="flex flex-col items-end gap-2">
+            <div className="w-12 h-12 bg-stone-900 rounded-2xl flex items-center justify-center shadow-xl shadow-stone-200">
+              <Palette className="w-6 h-6 text-white" />
+            </div>
+            <select
+              value={preferences.selectedModelId}
+              onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+              className="bg-transparent border-none p-0 font-bold text-stone-400 uppercase tracking-widest cursor-pointer focus:ring-0 text-[9px] appearance-none hover:text-stone-600 transition-colors text-right"
+            >
+              {AVAILABLE_MODELS.map(m => (
+                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </header>
@@ -249,7 +262,7 @@ export function CreativeAgent({ preferences, setActiveTab }: { preferences: any,
             </button>
           </div>
           <p className="text-[9px] text-center text-stone-400 font-bold uppercase tracking-[0.2em]">
-            Powered by Gemini 1.5 Pro • AI can make mistakes
+            Powered by {AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name || preferences.selectedModelId} • AI can make mistakes
           </p>
         </div>
       </div>

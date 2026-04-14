@@ -27,7 +27,9 @@ import {
 } from 'lucide-react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, updateDoc, doc, serverTimestamp } from '../lib/firebase';
 import { analyzeMenuImage } from '../lib/gemini';
+import { AVAILABLE_MODELS } from '../lib/ai';
 import { cn } from '../lib/utils';
+import { Logo } from './Logo';
 
 interface InventoryItem {
   id: string;
@@ -50,7 +52,7 @@ interface Recipe {
   notes?: string;
 }
 
-export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (tab: any) => void, preferences?: any }) {
+export function MenuManagement({ setActiveTab, preferences, updatePreference }: { setActiveTab: (tab: any) => void, preferences?: any, updatePreference: (key: string, value: string) => void }) {
   const [activeSubTab, setActiveSubTab] = useState<'menu' | 'inventory' | 'insights'>('menu');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -218,39 +220,55 @@ export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (t
         )}
       </AnimatePresence>
       <header className="px-2 space-y-8">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-start">
           <div className="space-y-0.5">
             <h1 className="text-3xl font-display font-bold text-neutral-900 tracking-tight">Vận hành</h1>
             <p className="text-neutral-400 text-[10px] font-bold uppercase tracking-[0.2em]">Menu • Kho • Lợi nhuận</p>
           </div>
-          <div className="flex bg-neutral-100 p-1 rounded-2xl">
-            <button 
-              onClick={() => setActiveSubTab('menu')}
-              className={cn(
-                "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
-                activeSubTab === 'menu' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-              )}
-            >
-              Menu
-            </button>
-            <button 
-              onClick={() => setActiveSubTab('inventory')}
-              className={cn(
-                "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
-                activeSubTab === 'inventory' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-              )}
-            >
-              Kho
-            </button>
-            <button 
-              onClick={() => setActiveSubTab('insights')}
-              className={cn(
-                "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
-                activeSubTab === 'insights' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
-              )}
-            >
-              Phân tích
-            </button>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex bg-neutral-100 p-1 rounded-2xl">
+              <button 
+                onClick={() => setActiveSubTab('menu')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
+                  activeSubTab === 'menu' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+                )}
+              >
+                Menu
+              </button>
+              <button 
+                onClick={() => setActiveSubTab('inventory')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
+                  activeSubTab === 'inventory' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+                )}
+              >
+                Kho
+              </button>
+              <button 
+                onClick={() => setActiveSubTab('insights')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
+                  activeSubTab === 'insights' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+                )}
+              >
+                Phân tích
+              </button>
+            </div>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">Model</span>
+              <select
+                value={preferences?.selectedModelId}
+                onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+                className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[9px] appearance-none hover:text-orange-700 transition-colors text-right"
+              >
+                {AVAILABLE_MODELS.map(m => (
+                  <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -312,7 +330,7 @@ export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (t
               {recipes.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-[2rem] border border-neutral-100 border-dashed px-6">
                   <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <ChefHat className="w-8 h-8 text-neutral-300" />
+                    <Logo size={32} variant="stone" className="opacity-40" />
                   </div>
                   <h3 className="text-lg font-display font-bold text-neutral-900 mb-2">Chưa có món ăn nào</h3>
                   <p className="text-neutral-400 text-sm mb-8 max-w-[240px] mx-auto">
@@ -530,7 +548,7 @@ export function MenuManagement({ setActiveTab, preferences }: { setActiveTab: (t
               {getLowStockItems().length === 0 && getLowMarginRecipes().length === 0 && (
                 <div className="text-center py-10 space-y-4">
                   <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto">
-                    <ChefHat className="w-8 h-8 text-green-500" />
+                    <Logo size={32} />
                   </div>
                   <p className="text-neutral-400 text-sm italic">Mọi thứ đang vận hành hoàn hảo!</p>
                 </div>
