@@ -754,7 +754,7 @@ Trả về kết quả theo đúng định dạng JSON chuẩn của bạn.`;
       return;
     }
     if (suggestion.action === 'switch_to_gemini') {
-      updatePreference('selectedModelId', 'gemini-2.0-flash');
+      updatePreference('selectedModelId', 'gemini-1.5-flash');
       // After switching, trigger a retry automatically
       const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
       if (lastUserMsg) {

@@ -1,8 +1,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { chatWithAI } from './ai';
+import { chatWithAI, chatWithAIWithFallback } from './ai';
 
-export const chefModel = "gemini-2.0-flash";
+export const chefModel = "gemini-1.5-flash";
 
 export const systemInstruction = `
 Bạn là một Bếp trưởng điều hành (Executive Chef) với hơn 20 năm kinh nghiệm tại các khách sạn 5 sao quốc tế. Bạn sở hữu tư duy nghệ thuật ẩm thực tinh tế cùng kỹ năng quản trị kinh doanh nhà hàng sắc bén.
@@ -67,12 +67,13 @@ export const searchGoogleKeepTool = {
 
 export async function chatWithChef(messages: ChatMessage[], tools?: any, customKey?: string, modelId: string = chefModel) {
   const config = customKey ? { googleKey: customKey } : {};
-  return await chatWithAI(
+  return await chatWithAIWithFallback(
     modelId,
     messages,
     systemInstruction,
     tools,
     config,
+    ['gemini-1.5-pro', 'gpt-4o', 'openrouter/anthropic/claude-3.5-sonnet'],
     recipeResponseSchema
   );
 }
@@ -104,12 +105,13 @@ export const recipeResponseSchema = z.object({
 });
 
 export async function generateRecipe(theme: string, config?: any, modelId: string = chefModel) {
-  return await chatWithAI(
+  return await chatWithAIWithFallback(
     modelId,
     [{ role: 'user', parts: [{ text: `Tạo một công thức nấu ăn chuyên nghiệp cho chủ đề: ${theme}. Bao gồm tiêu đề, nguyên liệu (với chi phí ước tính trên mỗi đơn vị), và hướng dẫn thực hiện. Trả về kết quả bằng tiếng Việt.` }] }],
     systemInstruction,
     undefined,
     config,
+    ['gemini-1.5-pro', 'gpt-4o', 'openrouter/anthropic/claude-3.5-sonnet'],
     recipeResponseSchema
   );
 }
