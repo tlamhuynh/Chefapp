@@ -169,17 +169,62 @@ function robustParseJson(jsonStr: string) {
     cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
   }
 
-  // Extract the first block that looks like JSON or Array
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/) || cleaned.match(/\[[\s\S]*\]/);
-  if (jsonMatch) {
-    cleaned = jsonMatch[0];
+  // Attempt standard parse first
+  try {
+    return JSON.parse(cleaned);
+  } catch (e: any) {
+    logger.warn("[robustParseJson] Initial parse failed, attempting cleanup", { error: e.message });
+  }
+
+  // Find the first '{' or '['
+  const startIndex = cleaned.search(/[\{\[]/);
+  if (startIndex === -1) {
+    throw new Error("No JSON object or array found in response");
+  }
+
+  let openBraces = 0;
+  let endIndex = -1;
+  let inString = false;
+  let escapeNext = false;
+  
+  for (let i = startIndex; i < cleaned.length; i++) {
+    const char = cleaned[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{' || char === '[') {
+        openBraces++;
+      } else if (char === '}' || char === ']') {
+        openBraces--;
+        if (openBraces === 0) {
+          endIndex = i;
+          break;
+        }
+      }
+    }
+  }
+
+  if (endIndex !== -1) {
+    cleaned = cleaned.substring(startIndex, endIndex + 1);
   }
 
   try {
     return JSON.parse(cleaned);
   } catch (e: any) {
-    logger.warn("[robustParseJson] Initial parse failed, attempting cleanup", { error: e.message });
-    
     try {
       // Common AI mistakes: trailing commas, single quotes on keys
       const fixed = cleaned
@@ -397,14 +442,9 @@ export async function chatWithAI(
       };
 
       if (responseSchema) {
-        if (modelId.includes('gpt-4o')) {
-          fetchPayload.response_format = {
-            type: 'json_schema',
-            json_schema: { name: 'response', strict: true, schema: typeof responseSchema === 'object' ? responseSchema : {} }
-          };
-        } else {
-          fetchPayload.response_format = { type: 'json_object' };
-        }
+        // Since responseSchema is a Zod object, it cannot be passed directly into OpenAI's json_schema object
+        // Use standard json_object format instead
+        fetchPayload.response_format = { type: 'json_object' };
       }
 
       const response = await fetch(baseURL, {
