@@ -278,7 +278,11 @@ export async function chatWithAI(
         genConfig.tools = convertToGeminiTools(tools);
       }
 
-      const response = await googleAI.models.generateContent({
+      const customGoogleAI = (config?.googleKey && config.googleKey !== 'ENV') 
+        ? new GoogleGenAI({ apiKey: config.googleKey }) 
+        : googleAI;
+
+      const response = await customGoogleAI.models.generateContent({
         model: mappedModelId,
         contents: geminiMessages,
         config: genConfig
@@ -300,7 +304,137 @@ export async function chatWithAI(
         }))
       };
     } catch (error: any) {
-      logger.error(`[chatWithAI] Gemini frontend failed, falling back to server`, error);
+      logger.error(`[chatWithAI] Gemini frontend failed`, error);
+      throw error;
+    }
+  }
+
+  // Handle Anthropic directly (Anthropic has CORS issues in browser, but Capacitor bypasses them natively. However API format is different)
+  // For other providers (OpenAI, OpenRouter, Groq, NVIDIA), they use the OpenAI-compatible REST API.
+  let apiKey = '';
+  let baseURL = '';
+  let actualModelId = modelId;
+
+  if (modelId.startsWith('openrouter/')) {
+    apiKey = config?.openrouterKey || '';
+    baseURL = 'https://openrouter.ai/api/v1/chat/completions';
+  } else if (modelId.startsWith('groq/')) {
+    apiKey = config?.groqKey || '';
+    baseURL = 'https://api.groq.com/openai/v1/chat/completions';
+    actualModelId = modelId.replace('groq/', '');
+  } else if (modelId.startsWith('nvidia/')) {
+    apiKey = config?.nvidiaKey || '';
+    baseURL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+    actualModelId = modelId.replace('nvidia/', '');
+  } else if (modelId.startsWith('gpt')) {
+    apiKey = config?.openaiKey || '';
+    baseURL = 'https://api.openai.com/v1/chat/completions';
+  } else if (modelId.startsWith('claude')) {
+    apiKey = config?.anthropicKey || '';
+    baseURL = 'https://api.anthropic.com/v1/messages';
+  }
+
+  // Handle Anthropic specifically since its API structure is completely different
+  if (modelId.startsWith('claude') && apiKey && baseURL) {
+    logger.info(`[chatWithAI] Using Direct Client FETCH for Anthropic ${modelId}`);
+    try {
+      const fetchPayload: any = {
+        model: modelId,
+        max_tokens: 4096,
+        system: systemInstruction || "",
+        messages: formattedMessages.map(msg => ({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: typeof msg.content === 'string' ? msg.content : msg.content.map((c: any) => c.text || JSON.stringify(c)).join(' ')
+        })),
+        temperature: 0.7
+      };
+
+      const response = await fetch(baseURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerously-allow-browser': 'true' // Capacitor runs as native, but this is required for Webpack/Browser environments
+        },
+        body: JSON.stringify(fetchPayload)
+      });
+      
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null);
+        const errMsg = errJson?.error?.message || await response.text() || 'Unknown error';
+        throw new Error(`[${response.status}] ${errMsg}`);
+      }
+      
+      const payload = await response.json();
+      const contentStr = payload.content?.[0]?.text || '{}';
+      
+      if (responseSchema) {
+        return robustParseJson(contentStr);
+      }
+      
+      return { text: contentStr };
+    } catch (e: any) {
+      logger.error(`[chatWithAI] Direct fetch failed for ${modelId}`, e);
+      throw e;
+    }
+  }
+
+  // Handle OpenAI-compatible endpoints
+  if (apiKey && baseURL && !modelId.startsWith('claude')) {
+    logger.info(`[chatWithAI] Using Direct Client FETCH (CORS Safe in Capacitor) for ${modelId}`);
+    try {
+      const fetchPayload: any = {
+        model: actualModelId,
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...formattedMessages.map(msg => ({
+            role: msg.role,
+            content: typeof msg.content === 'string' ? msg.content : msg.content.map((c: any) => c.text || JSON.stringify(c)).join(' ')
+          }))
+        ],
+        temperature: 0.7
+      };
+
+      if (responseSchema) {
+        if (modelId.includes('gpt-4o')) {
+          fetchPayload.response_format = {
+            type: 'json_schema',
+            json_schema: { name: 'response', strict: true, schema: typeof responseSchema === 'object' ? responseSchema : {} }
+          };
+        } else {
+          fetchPayload.response_format = { type: 'json_object' };
+        }
+      }
+
+      const response = await fetch(baseURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://souschef.app',
+          'X-Title': 'SousChef AI'
+        },
+        body: JSON.stringify(fetchPayload)
+      });
+      
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null);
+        const errMsg = errJson?.error?.message || await response.text() || 'Unknown error';
+        throw new Error(`[${response.status}] ${errMsg}`);
+      }
+      
+      const payload = await response.json();
+      const contentStr = payload.choices?.[0]?.message?.content || '{}';
+      
+      if (responseSchema) {
+        return robustParseJson(contentStr);
+      }
+      
+      return { text: contentStr };
+    } catch (e: any) {
+      logger.error(`[chatWithAI] Direct fetch failed for ${modelId}`, e);
+      throw e; // Fail directly in Capacitor apps
     }
   }
 
@@ -355,32 +489,81 @@ export async function multiAgentChat(
   recipeData?: any[]
 ) {
   const formattedMessages = formatMessages(messages);
-  logger.info(`[multiAgentChat] Request to ${modelId}`, { messages: formattedMessages, type: 'multi-agent' });
+  logger.info(`[multiAgentChat] Request to ${modelId} from Frontend`, { type: 'multi-agent' });
 
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      modelId,
-      messages: formattedMessages,
-      systemInstruction,
-      config,
-      inventoryData,
-      recipeData,
-      type: 'multi-agent'
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    logger.error(`[multiAgentChat] Error from ${modelId}`, errorData);
-    const msg = errorData.error || `Multi-agent call failed`;
-    throw new Error(`[${response.status}] ${msg}`);
+  // Agent 1: Creative Chef
+  const creativePrompt = `
+    ${systemInstruction}
+    BẠN LÀ CREATIVE CHEF AGENT.
+    Nhiệm vụ: Đề xuất các món ăn, thực đơn hoặc giải pháp sáng tạo.
+    Hãy tập trung vào hương vị, trải nghiệm khách hàng và sự độc đáo.
+  `;
+  
+  logger.info(`[multiAgentChat] Calling Creative Agent`);
+  let proposal = "";
+  try {
+    const res1 = await chatWithAI(modelId, formattedMessages, creativePrompt, undefined, config);
+    proposal = res1.text || "";
+  } catch(e) {
+    logger.error("Creative Agent failed", e);
+    throw e;
   }
 
-  const result = await response.json();
-  logger.debug(`[multiAgentChat] Response from ${modelId}`, result);
-  return result.object;
+  // Agent 2: Financial
+  const financialPrompt = `
+    BẠN LÀ FINANCIAL & INVENTORY EXPERT.
+    Dữ liệu kho hiện tại: ${JSON.stringify(inventoryData?.slice(0, 20) || [])}
+    Dữ liệu công thức hiện tại: ${JSON.stringify(recipeData?.slice(0, 10) || [])}
+    Nhiệm vụ: Phân tích đề xuất của Creative Chef dưới góc độ chi phí và khả năng thực thi.
+    Đề xuất của Creative Chef: "${proposal}"
+  `;
+  
+  logger.info(`[multiAgentChat] Calling Financial Agent`);
+  let review = "";
+  try {
+    const res2 = await chatWithAI(modelId, [{ role: 'user', content: "Hãy phân tích đề xuất trên." }], financialPrompt, undefined, config);
+    review = res2.text || "";
+  } catch(e) {
+    logger.error("Financial Agent failed", e);
+    // If it fails, we fall through orchestrator with empty review
+    review = "Khả năng phân tích tài chính tạm thời không khả dụng.";
+  }
+
+  // Agent 3: Orchestrator
+  const orchestratorPrompt = `
+    BẠN LÀ BẾP TRƯỞNG ĐIỀU PHỐI (ORCHESTRATOR).
+    Dưới đây là cuộc thảo luận nội bộ:
+    - Sáng tạo: ${proposal}
+    - Phản biện: ${review}
+    
+    Nhiệm vụ: Tổng hợp câu trả lời cuối cùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI.
+    
+    QUY TẮC TRẢ LỜI (TRẢ VỀ ĐÚNG JSON NÀY):
+    {
+      "text": "Câu trả lời cuối bằng Markdown đẹp cho người dùng",
+      "internalMonologue": "Tóm tắt cuộc thảo luận",
+      "proposedActions": [
+        { "type": "add_recipe", "data": { "title": "...", "ingredients": [], "instructions": "..." } },
+        { "type": "update_inventory", "data": { "name": "...", "amount": 0 } }
+      ]
+    }
+  `;
+
+  logger.info(`[multiAgentChat] Calling Orchestrator`);
+  const responseSchema = z.object({
+    text: z.string(),
+    internalMonologue: z.string().optional(),
+    proposedActions: z.array(z.any()).optional()
+  });
+
+  return await chatWithAI(
+    modelId,
+    [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng." }],
+    orchestratorPrompt,
+    undefined,
+    config,
+    responseSchema
+  );
 }
 
 /**

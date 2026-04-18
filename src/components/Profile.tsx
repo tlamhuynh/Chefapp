@@ -89,28 +89,26 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                     model.provider === 'groq' ? preferences.groqKey : 
                     model.provider === 'openrouter' ? preferences.openrouterKey : '';
 
-        if (key === 'ENV' && model.provider === 'google') {
-          // Special case for Gemini using environment variable
-          const result = await chatWithAI(
-            model.id, 
-            [{ role: 'user', parts: [{ text: 'Hi' }] }], 
-            "Chỉ trả về JSON rỗng {}",
-            undefined,
-            { googleKey: preferences.googleKey }
-          );
-          if (result) {
-            setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
+        // Test API by asking a simple question
+        const result = await chatWithAI(
+          model.id, 
+          [{ role: 'user', parts: [{ text: 'Ping' }] }], 
+          "Reply 'Pong' only.",
+          undefined,
+          { 
+             googleKey: preferences.googleKey,
+             openaiKey: preferences.openaiKey,
+             anthropicKey: preferences.anthropicKey,
+             nvidiaKey: preferences.nvidiaKey,
+             groqKey: preferences.groqKey,
+             openrouterKey: preferences.openrouterKey
           }
-          continue;
-        }
-
-        const response = await fetch(`/api/health-check?provider=${model.provider}&modelId=${model.id}&apiKey=${key}`);
-        const data = await response.json();
-
-        if (response.ok && data.status === 'ok') {
+        );
+        
+        if (result) {
           setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
         } else {
-          throw new Error(data.message || "Không có phản hồi");
+          throw new Error("Không có phản hồi");
         }
       } catch (error: any) {
         console.error(`API check failed for ${model.id}:`, error);
