@@ -2,7 +2,13 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { chatWithAI, chatWithAIWithFallback } from './ai';
 
-export const chefModel = "gemini-1.5-flash";
+export const chefModel = "gemini-flash-latest";
+
+const defaultFallbacks = [
+  'gemini-3.1-pro-preview',
+  'gemini-3-flash-preview',
+  'gpt-4o-mini'
+];
 
 export const systemInstruction = `
 Bạn là một Bếp trưởng điều hành (Executive Chef) với hơn 20 năm kinh nghiệm tại các khách sạn 5 sao quốc tế. Bạn sở hữu tư duy nghệ thuật ẩm thực tinh tế cùng kỹ năng quản trị kinh doanh nhà hàng sắc bén.
@@ -31,10 +37,11 @@ Khi nhận yêu cầu, hãy trả lời theo cấu trúc Markdown trong trườn
 5. **Manager's Note**: Lưu ý về giá vốn, bảo quản hoặc tối ưu nhân lực.
 
 **YÊU CẦU KỸ THUẬT:**
-- Trả về JSON với các trường: "text" (Markdown theo cấu trúc trên), "suggestions" (label, action), và "recipe" (nếu có công thức).
-- Trong "recipe", cung cấp bảng liệt kê nguyên liệu chi tiết: Tên, Định lượng, Đơn vị, Giá nhập, và Cost thực tế.
-- Sử dụng RecipeCraw Sub-agent (crawl_recipe, search_google_drive, search_google_photos, search_google_keep) khi cần đối chiếu dữ liệu người dùng hoặc lấy công thức từ web.
-- Tất cả câu trả lời bằng tiếng Việt.
+- BẮT BUỘC trả về JSON với các trường (KHÔNG dịch tên keys): "text" (Markdown), "suggestions" (Mảng label/action), và "recipe" (nếu có công thức).
+- Trường "text" BẮT BUỘC chứa nội dung phản hồi chính, không dùng "ket_qua" hay "phan_hoi".
+- "recipe" cung cấp bảng nguyên liệu chi tiết: Tên, Định lượng, Đơn vị, Giá nhập, và Cost thực tế.
+- Sử dụng công cụ (crawl_recipe, search_google_drive...) khi cần đối chiếu dữ liệu hoặc lấy tin từ web.
+- Tất cả nội dung văn bản (values) phải bằng tiếng Việt.
 `;
 
 export const crawlRecipeTool = {
@@ -73,8 +80,8 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any, customK
     systemInstruction,
     tools,
     config,
-    ['gemini-1.5-pro', 'gpt-4o', 'openrouter/anthropic/claude-3.5-sonnet'],
-    recipeResponseSchema
+    defaultFallbacks.filter(id => id !== modelId),
+    { text: "Markdown", suggestions: "Action buttons", recipe: "Detailed recipe data" }
   );
 }
 
@@ -111,13 +118,13 @@ export async function generateRecipe(theme: string, config?: any, modelId: strin
     systemInstruction,
     undefined,
     config,
-    ['gemini-1.5-pro', 'gpt-4o', 'openrouter/anthropic/claude-3.5-sonnet'],
-    recipeResponseSchema
+    defaultFallbacks.filter(id => id !== modelId),
+    { text: "Markdown", suggestions: "Actions", recipe: "Recipe details" }
   );
 }
 
 export async function analyzeOrderImage(base64Image: string, config?: any, modelId: string = chefModel) {
-  return await chatWithAI(
+  return await chatWithAIWithFallback(
     modelId,
     [
       { 
@@ -131,38 +138,73 @@ export async function analyzeOrderImage(base64Image: string, config?: any, model
     systemInstruction,
     undefined,
     config,
-    z.object({
-      items: z.array(z.object({ name: z.string(), quantity: z.string() })),
-      summary: z.string()
-    })
+    defaultFallbacks.filter(id => id !== modelId),
+    { items: "List of items", summary: "Prep summary" }
   );
 }
 
-export async function analyzeMenuImage(base64Image: string, config?: any, modelId: string = chefModel) {
-  return await chatWithAI(
+export async function analyzeMenuImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = chefModel) {
+  return await chatWithAIWithFallback(
     modelId,
     [
       { 
         role: 'user', 
         parts: [
-          { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
-          { text: "Hãy phân tích hình ảnh thực đơn (menu) này. Trích xuất danh sách các món ăn, mô tả (nếu có) và giá bán. Nếu thông tin nào không rõ ràng hoặc thiếu (ví dụ: định lượng, nguyên liệu chính), hãy tạo danh sách các câu hỏi để hỏi lại người dùng. Trả về kết quả bằng tiếng Việt dưới dạng JSON." }
+          { inlineData: { data: base64Image, mimeType } },
+          { text: `Hãy phân tích hình ảnh thực đơn (menu) này. 
+          YÊU CẦU:
+          1. Trích xuất danh sách các món ăn (dishes) gồm: title (tên món), price (giá số), description (mô tả), potentialIngredients (mảng các nguyên liệu dự đoán).
+          2. Tạo danh sách các câu hỏi làm rõ (clarifyingQuestions) nếu thiếu thông tin về định lượng hoặc nguyên liệu chính.
+          3. Cung cấp tóm tắt (summary) về phong cách thực đơn.
+          
+          TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON với cấu trúc:
+          {
+            "dishes": [{"title": "...", "price": 0, "description": "...", "potentialIngredients": ["..."]}],
+            "clarifyingQuestions": ["..."],
+            "summary": "..."
+          }` }
         ] 
       }
     ],
     systemInstruction,
     undefined,
     config,
-    z.object({
-      dishes: z.array(z.object({
-        title: z.string(),
-        description: z.string().optional(),
-        price: z.number(),
-        potentialIngredients: z.array(z.string()).optional()
-      })),
-      clarifyingQuestions: z.array(z.string()),
-      summary: z.string()
-    })
+    defaultFallbacks.filter(id => id !== modelId),
+    { dishes: "Menu items", clarifyingQuestions: "Questions", summary: "Overview" }
+  );
+}
+
+export async function analyzeInvoiceImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = chefModel) {
+  return await chatWithAIWithFallback(
+    modelId,
+    [
+      { 
+        role: 'user', 
+        parts: [
+          { inlineData: { data: base64Image, mimeType } },
+          { text: `Hãy phân tích hình ảnh hóa đơn (invoice/receipt) mua hàng này. 
+          YÊU CẦU:
+          1. Trích xuất danh sách nguyên liệu/hàng hóa (items) gồm: name (tên), quantity (số lượng), unit (đơn vị), unitPrice (đơn giá), totalPrice (thành tiền).
+          2. Tính tổng tiền hóa đơn (totalAmount).
+          3. Trích xuất tên nhà cung cấp (supplierName) và ngày mua (date) nếu có.
+          4. Cung cấp tóm tắt (summary) ngắn gọn.
+          
+          TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON với cấu trúc:
+          {
+            "items": [{"name": "...", "quantity": 0, "unit": "...", "unitPrice": 0, "totalPrice": 0}],
+            "totalAmount": 0,
+            "supplierName": "...",
+            "date": "...",
+            "summary": "..."
+          }` }
+        ] 
+      }
+    ],
+    systemInstruction,
+    undefined,
+    config,
+    defaultFallbacks.filter(id => id !== modelId),
+    { items: "Invoice items", totalAmount: "Total", supplierName: "Supplier", date: "Date", summary: "Summary" }
   );
 }
 
@@ -211,9 +253,6 @@ export async function chatWithCreativeAgent(messages: ChatMessage[], config?: an
     creativeAgentInstruction,
     undefined,
     config,
-    z.object({
-      text: z.string(),
-      suggestions: z.array(z.object({ label: z.string(), action: z.string() }))
-    })
+    { text: "Markdown response", suggestions: "Action suggestions" }
   );
 }

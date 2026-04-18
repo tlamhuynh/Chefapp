@@ -10,9 +10,9 @@ interface LogoProps {
 export function Logo({ className, size = 32, variant = 'default' }: LogoProps) {
   const colors = {
     default: {
-      hat: 'fill-orange-500',
-      spark: 'fill-orange-600',
-      accent: 'fill-stone-200'
+      hat: 'fill-neutral-900',
+      spark: 'fill-neutral-900',
+      accent: 'fill-neutral-200'
     },
     white: {
       hat: 'fill-white',
@@ -20,9 +20,9 @@ export function Logo({ className, size = 32, variant = 'default' }: LogoProps) {
       accent: 'fill-white/20'
     },
     stone: {
-      hat: 'fill-stone-800',
-      spark: 'fill-stone-900',
-      accent: 'fill-stone-100'
+      hat: 'fill-neutral-800',
+      spark: 'fill-neutral-900',
+      accent: 'fill-neutral-100'
     }
   };
 
@@ -58,10 +58,10 @@ export function Logo({ className, size = 32, variant = 'default' }: LogoProps) {
 
 export function LogoText({ className }: { className?: string }) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <Logo size={28} />
-      <span className="font-black text-xl tracking-tighter text-stone-900">
-        SousChef<span className="text-orange-600">AI</span>
+    <div className={cn("flex items-center gap-2.5", className)}>
+      <Logo size={24} />
+      <span className="font-display font-semibold text-xl tracking-tight text-neutral-900">
+        SousChef<span className="font-normal italic ml-0.5 opacity-60">AI</span>
       </span>
     </div>
   );

@@ -1,5 +1,5 @@
 import { db, collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, orderBy, limit } from './firebase';
-import { chatWithAI } from './ai';
+import { chatWithAI, chatWithAIWithFallback } from './ai';
 import { z } from 'zod';
 
 export interface Memory {
@@ -56,7 +56,7 @@ export async function saveMemory(userId: string, key: string, value: string, imp
   }
 }
 
-export async function extractMemoriesFromChat(userId: string, messages: any[], modelId: string = 'gemini-1.5-flash', config?: any) {
+export async function extractMemoriesFromChat(userId: string, messages: any[], modelId: string = 'gemini-2.0-flash', config?: any) {
   const systemInstruction = `Bạn là một hệ thống phân tích trí nhớ (Memory Extraction System).
 Nhiệm vụ của bạn là phân tích cuộc hội thoại giữa đầu bếp và AI để trích xuất các thông tin quan trọng về sở thích, phong cách, hạn chế hoặc mục tiêu của người dùng.
 
@@ -69,12 +69,13 @@ Mỗi memory gồm:
 Chỉ trích xuất những thông tin THỰC SỰ mới hoặc thay đổi. Nếu không có gì mới, trả về mảng trống.`;
 
   try {
-    const result = await chatWithAI(
+    const result = await chatWithAIWithFallback(
       modelId,
       [{ role: 'user', parts: [{ text: JSON.stringify(messages.slice(-10)) }] }],
       systemInstruction,
       undefined,
       config,
+      ['gemini-1.5-flash', 'gpt-4o-mini', 'gemini-2.0-flash'],
       z.object({
         memories: z.array(z.object({
           key: z.string(),

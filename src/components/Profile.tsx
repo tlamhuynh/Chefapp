@@ -76,13 +76,18 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Groq API Key' } }));
         continue;
       }
+      if (model.provider === 'openrouter' && !preferences.openrouterKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenRouter API Key' } }));
+        continue;
+      }
 
       try {
         const key = model.provider === 'google' ? (preferences.googleKey || 'ENV') : 
                     model.provider === 'openai' ? preferences.openaiKey :
                     model.provider === 'anthropic' ? preferences.anthropicKey :
                     model.provider === 'nvidia' ? preferences.nvidiaKey :
-                    model.provider === 'groq' ? preferences.groqKey : '';
+                    model.provider === 'groq' ? preferences.groqKey : 
+                    model.provider === 'openrouter' ? preferences.openrouterKey : '';
 
         if (key === 'ENV' && model.provider === 'google') {
           // Special case for Gemini using environment variable
@@ -371,6 +376,7 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                           { key: 'googleKey', label: 'Google Gemini API Key', placeholder: 'AIza...', icon: 'google' },
                           { key: 'openaiKey', label: 'OpenAI API Key', placeholder: 'sk-...', icon: 'openai' },
                           { key: 'anthropicKey', label: 'Anthropic API Key', placeholder: 'sk-ant-...', icon: 'anthropic' },
+                          { key: 'openrouterKey', label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', icon: 'openrouter' },
                           { key: 'nvidiaKey', label: 'NVIDIA API Key', placeholder: 'nvapi-...', icon: 'nvidia' },
                           { key: 'groqKey', label: 'Groq API Key', placeholder: 'gsk_...', icon: 'groq' }
                         ].map(field => (
@@ -382,6 +388,7 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                                 field.icon === 'google' ? "text-blue-600 bg-blue-50" :
                                 field.icon === 'openai' ? "text-green-600 bg-green-50" :
                                 field.icon === 'anthropic' ? "text-stone-600 bg-stone-50" :
+                                field.icon === 'openrouter' ? "text-purple-600 bg-purple-50" :
                                 "text-neutral-400 bg-neutral-50"
                               )}>
                                 {field.icon}

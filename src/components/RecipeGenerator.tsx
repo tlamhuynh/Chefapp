@@ -85,7 +85,11 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
       setGeneratedRecipe(recipe);
     } catch (error: any) {
       console.error("Generation failed", error);
-      setError(error.message || "Không thể tạo công thức. Vui lòng kiểm tra API Key.");
+      let errorMsg = error.message || "Không thể tạo công thức. Vui lòng kiểm tra API Key.";
+      if (errorMsg.toLowerCase().includes('high demand') || errorMsg.includes('429')) {
+        errorMsg = "Hệ thống AI hiện đang quá tải (High Demand). Hệ thống đã thử các model dự phòng nhưng đều bận. Vui lòng thử lại sau ít phút hoặc đổi sang model khác trong Cài đặt.";
+      }
+      setError(errorMsg);
     } finally {
       setIsGenerating(false);
     }

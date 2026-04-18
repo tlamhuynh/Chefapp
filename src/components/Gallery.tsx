@@ -95,7 +95,11 @@ export function Gallery() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
                   <p className="text-white text-xs font-bold truncate">{img.title}</p>
                   <p className="text-white/70 text-[10px] uppercase tracking-widest mt-1">
-                    {img.createdAt?.toDate().toLocaleDateString('vi-VN')}
+                    {img.createdAt ? (
+                      typeof img.createdAt.toDate === 'function' 
+                        ? img.createdAt.toDate().toLocaleDateString('vi-VN')
+                        : new Date(img.createdAt).toLocaleDateString('vi-VN')
+                    ) : '---'}
                   </p>
                 </div>
                 <button
@@ -167,7 +171,11 @@ export function Gallery() {
                       <div className="flex items-center gap-3 text-neutral-500">
                         <Calendar className="w-4 h-4" />
                         <span className="text-xs font-medium">
-                          {selectedImage.createdAt?.toDate().toLocaleDateString('vi-VN')}
+                          {selectedImage.createdAt ? (
+                            typeof selectedImage.createdAt.toDate === 'function' 
+                              ? selectedImage.createdAt.toDate().toLocaleDateString('vi-VN')
+                              : new Date(selectedImage.createdAt).toLocaleDateString('vi-VN')
+                          ) : '---'}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-neutral-500">

@@ -26,10 +26,11 @@ import {
   Sparkles
 } from 'lucide-react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, addDoc, updateDoc, doc, serverTimestamp, deleteDoc, getDocs } from '../lib/firebase';
-import { analyzeMenuImage } from '../lib/gemini';
+import { analyzeMenuImage, analyzeInvoiceImage } from '../lib/gemini';
 import { AVAILABLE_MODELS } from '../lib/ai';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
+import { InventorySchema } from '../types/chat';
 
 interface InventoryItem {
   id: string;
@@ -53,18 +54,27 @@ interface Recipe {
 }
 
 export function MenuManagement({ setActiveTab, preferences, updatePreference }: { setActiveTab: (tab: any) => void, preferences?: any, updatePreference: (key: string, value: string) => void }) {
-  const [activeSubTab, setActiveSubTab] = useState<'menu' | 'inventory' | 'insights'>('menu');
+  const [activeSubTab, setActiveSubTab] = useState<'menu' | 'inventory' | 'suppliers' | 'insights'>('menu');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [newItem, setNewItem] = useState({ name: '', currentStock: 0, minStock: 0, unit: 'kg', category: 'Thực phẩm' });
   const [searchQuery, setSearchQuery] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isGeneratingPO, setIsGeneratingPO] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<{
     dishes: any[];
     clarifyingQuestions: string[];
+    summary: string;
+  } | null>(null);
+  const [invoiceAnalysisResult, setInvoiceAnalysisResult] = useState<{
+    items: any[];
+    totalAmount: number;
+    supplierName: string;
+    date: string;
     summary: string;
   } | null>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
@@ -86,14 +96,57 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
           nvidiaKey: preferences.nvidiaKey,
           groqKey: preferences.groqKey
         } : undefined;
-        const result = await analyzeMenuImage(base64, aiConfig, preferences?.selectedModelId);
-        setAnalysisResult(result);
+        
+        if (isScanningInvoice) {
+           const result = await analyzeInvoiceImage(base64, file.type, aiConfig, preferences?.selectedModelId);
+           setInvoiceAnalysisResult(result);
+        } else {
+           const result = await analyzeMenuImage(base64, file.type, aiConfig, preferences?.selectedModelId);
+           setAnalysisResult(result);
+        }
         setIsAnalyzing(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      console.error("Error analyzing menu:", error);
+      console.error("Error analyzing image:", error);
       setIsAnalyzing(false);
+      setNotification({ message: 'Có lỗi xảy ra khi phân tích hình ảnh.', type: 'error' });
+    }
+  };
+
+  const handleSaveAnalyzedInvoice = async () => {
+    if (!auth.currentUser || !invoiceAnalysisResult) return;
+    
+    try {
+      for (const item of invoiceAnalysisResult?.items || []) {
+        const validatedItem = InventorySchema.parse({
+           name: item.name,
+           currentStock: Number(item.quantity) || 0,
+           minStock: 2,
+           unit: item.unit || 'đơn vị',
+           pricePerUnit: Number(item.unitPrice) || 0,
+           category: 'Chưa phân loại'
+        });
+
+        await addDoc(collection(db, 'inventory'), {
+          ...validatedItem,
+          lastPurchasePrice: item.unitPrice || 0,
+          authorId: auth.currentUser.uid,
+          createdAt: serverTimestamp()
+        });
+      }
+      setIsScanningInvoice(false);
+      setInvoiceAnalysisResult(null);
+      setNotification({ message: `Đã nhập khẩu ${invoiceAnalysisResult?.items?.length || 0} nguyên liệu vào kho!`, type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      console.error("Error saving invoice:", error);
+      if (error.errors) {
+        setNotification({ message: 'Lỗi xác thực dữ liệu hóa đơn: ' + error.errors[0].message, type: 'error' });
+      } else {
+        setNotification({ message: 'Có lỗi xảy ra khi lưu hóa đơn.', type: 'error' });
+      }
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -119,7 +172,8 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     if (!auth.currentUser || !analysisResult) return;
     
     try {
-      for (const dish of analysisResult.dishes) {
+      for (const dish of analysisResult?.dishes || []) {
+         // Although Menu dish logic maps slightly differently, we can create a draft Recipe format.
         await addDoc(collection(db, 'recipes'), {
           title: dish.title,
           description: dish.description || '',
@@ -133,7 +187,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
       }
       setIsCapturing(false);
       setAnalysisResult(null);
-      setNotification({ message: `Đã lưu ${analysisResult.dishes.length} món vào danh sách công thức nháp!`, type: 'success' });
+      setNotification({ message: `Đã lưu ${analysisResult?.dishes?.length || 0} món vào danh sách công thức nháp!`, type: 'success' });
       setTimeout(() => setNotification(null), 3000);
     } catch (error) {
       console.error("Error saving menu:", error);
@@ -142,13 +196,13 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     }
   };
 
-  const filteredRecipes = recipes.filter(recipe => {
+  const filteredRecipes = (recipes || []).filter(recipe => {
     const query = searchQuery.toLowerCase();
-    const matchesTitle = recipe.title.toLowerCase().includes(query);
+    const matchesTitle = recipe.title?.toLowerCase()?.includes(query);
     const matchesIngredients = recipe.ingredients?.some(ing => 
-      ing.name.toLowerCase().includes(query)
+      ing?.name?.toLowerCase()?.includes(query)
     );
-    const matchesTheme = (recipe as any).theme?.toLowerCase().includes(query);
+    const matchesTheme = (recipe as any).theme?.toLowerCase()?.includes(query);
     
     return matchesTitle || matchesIngredients || matchesTheme;
   });
@@ -156,8 +210,17 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
   const handleAddItem = async () => {
     if (!auth.currentUser || !newItem.name) return;
     try {
+      const validatedData = InventorySchema.parse({
+         name: newItem.name,
+         currentStock: Number(newItem.currentStock),
+         unit: newItem.unit,
+         minStock: Number(newItem.minStock),
+         pricePerUnit: 0,
+         category: newItem.category
+      });
+
       await addDoc(collection(db, 'inventory'), {
-        ...newItem,
+        ...validatedData,
         authorId: auth.currentUser.uid,
         createdAt: serverTimestamp()
       });
@@ -165,9 +228,13 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
       setNewItem({ name: '', currentStock: 0, minStock: 0, unit: 'kg', category: 'Thực phẩm' });
       setNotification({ message: `Đã thêm "${newItem.name}" vào kho thành công!`, type: 'success' });
       setTimeout(() => setNotification(null), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding item:", error);
-      setNotification({ message: 'Có lỗi xảy ra khi thêm nguyên liệu.', type: 'error' });
+      if (error.errors) {
+        setNotification({ message: 'Lỗi xác thực dữ liệu: ' + error.errors[0].message, type: 'error' });
+      } else {
+        setNotification({ message: 'Có lỗi xảy ra khi thêm nguyên liệu.', type: 'error' });
+      }
       setTimeout(() => setNotification(null), 3000);
     }
   };
@@ -264,6 +331,15 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                 Kho
               </button>
               <button 
+                onClick={() => setActiveSubTab('suppliers')}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all hidden sm:block",
+                  activeSubTab === 'suppliers' ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-600"
+                )}
+              >
+                Nhà CC
+              </button>
+              <button 
                 onClick={() => setActiveSubTab('insights')}
                 className={cn(
                   "px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all",
@@ -345,7 +421,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {recipes.length === 0 ? (
+              {(recipes?.length || 0) === 0 ? (
                 <div className="text-center py-16 bg-white rounded-[2rem] border border-neutral-100 border-dashed px-6">
                   <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Logo size={32} variant="stone" className="opacity-40" />
@@ -369,7 +445,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                     </button>
                   </div>
                 </div>
-              ) : filteredRecipes.length === 0 ? (
+              ) : (filteredRecipes?.length || 0) === 0 ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-neutral-100 border-dashed">
                   <Search className="w-8 h-8 text-neutral-200 mx-auto mb-3" />
                   <p className="text-neutral-400 text-sm italic">Không tìm thấy món ăn nào phù hợp.</p>
@@ -425,12 +501,12 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                     <div className="flex -space-x-2">
                       {recipe.ingredients?.slice(0, 3).map((ing, i) => (
                         <div key={i} className="w-6 h-6 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-[8px] font-bold text-neutral-500">
-                          {ing.name[0]}
+                          {ing.name ? ing.name[0] : '?'}
                         </div>
                       ))}
-                      {recipe.ingredients?.length > 3 && (
+                      {(recipe.ingredients?.length || 0) > 3 && (
                         <div className="w-6 h-6 rounded-full bg-neutral-50 border-2 border-white flex items-center justify-center text-[8px] font-bold text-neutral-400">
-                          +{recipe.ingredients.length - 3}
+                          +{(recipe.ingredients?.length || 0) - 3}
                         </div>
                       )}
                     </div>
@@ -464,14 +540,24 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                   </button>
                 ))}
               </div>
-              <button 
-                onClick={cleanupInactiveInventory}
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all"
-                title="Xoá các mặt hàng đã hết kho"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Dọn dẹp kho</span>
-              </button>
+              <div className="flex items-center gap-2">
+                 <button 
+                   onClick={() => setIsScanningInvoice(true)}
+                   className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-bold hover:bg-neutral-800 transition-all shadow-lg active:scale-95"
+                   title="Quét hóa đơn nhập hàng"
+                 >
+                   <Camera className="w-4 h-4" />
+                   <span className="hidden sm:inline">Quét hóa đơn</span>
+                 </button>
+                 <button 
+                   onClick={cleanupInactiveInventory}
+                   className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all"
+                   title="Xoá các mặt hàng đã hết kho"
+                 >
+                   <Trash2 className="w-4 h-4" />
+                   <span className="hidden sm:inline">Dọn dẹp kho</span>
+                 </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl overflow-hidden border border-neutral-100">
@@ -484,14 +570,14 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">
-                  {inventory.length === 0 ? (
+                  {(inventory?.length || 0) === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-4 py-10 text-center text-neutral-400 text-sm italic">
                         Chưa có dữ liệu kho. Hãy thêm nguyên liệu mới.
                       </td>
                     </tr>
                   ) : (
-                    inventory.map((item) => (
+                    inventory?.map((item) => (
                       <tr key={item.id} className="hover:bg-neutral-50/50 transition-colors">
                         <td className="px-4 py-4">
                           <p className="text-sm font-bold text-neutral-900">{item.name}</p>
@@ -522,6 +608,123 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             >
               <Plus className="w-4 h-4" /> Thêm nguyên liệu
             </button>
+          </motion.div>
+        )}
+
+        {activeSubTab === 'suppliers' && (
+          <motion.div
+            key="suppliers"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="space-y-6"
+          >
+            <div className="bg-neutral-900 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-6 group">
+               <div className="absolute top-0 left-0 w-full h-full bg-[url('https://picsum.photos/seed/market/800/400')] opacity-10 bg-cover bg-center group-hover:scale-105 transition-transform duration-1000" />
+               <div className="relative z-10 space-y-2 text-center sm:text-left">
+                  <h3 className="text-2xl font-display font-bold">Chợ Nguyên Liệu</h3>
+                  <p className="text-neutral-400 text-sm max-w-sm">Liên kết trực tiếp với các nhà cung cấp sỉ (Thịt, Rau củ, Đồ khô) để mua hàng nhanh chóng với giá ưu đãi.</p>
+               </div>
+               <button className="relative z-10 bg-white text-neutral-900 px-8 py-4 rounded-xl font-bold text-sm shadow-xl active:scale-95 transition-all w-full sm:w-auto">
+                 Tìm Nhà Cung Cấp
+               </button>
+            </div>
+
+            <div className="flex items-center justify-between px-2 pt-4">
+              <h3 className="text-sm font-bold text-neutral-900 uppercase tracking-widest">Gợi ý từ AI (Dựa trên hàng sắp hết)</h3>
+              <button 
+                onClick={() => {
+                   const lowStock = getLowStockItems();
+                   if (lowStock.length === 0) {
+                      setNotification({ message: 'Không có nguyên liệu nào đang thiếu dưới mức an toàn.', type: 'error' });
+                      setTimeout(() => setNotification(null), 3000);
+                      return;
+                   }
+                   
+                   // Generate PO PDF
+                   const printWindow = window.open('', '_blank');
+                   if (!printWindow) return;
+
+                   printWindow.document.write(`
+                     <html>
+                       <head>
+                         <title>Purchase Order (PO)</title>
+                         <style>
+                           body { font-family: sans-serif; padding: 40px; color: #333; }
+                           h1 { color: #000; text-transform: uppercase; font-size: 24px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+                           table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                           th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+                           th { background-color: #f5f5f5; font-weight: bold; }
+                           .footer { margin-top: 40px; font-size: 12px; color: #777; border-top: 1px solid #ddd; padding-top: 10px; }
+                         </style>
+                       </head>
+                       <body>
+                         <h1>Đơn Yêu Cầu Đặt Hàng (Purchase Order)</h1>
+                         <p><strong>Ngày tạo:</strong> ${new Date().toLocaleDateString('vi-VN')}</p>
+                         <p><strong>Đơn vị:</strong> Bếp AI SousChef</p>
+                         
+                         <table>
+                           <thead>
+                             <tr>
+                               <th>STT</th>
+                               <th>Tên Nguyên Liệu</th>
+                               <th>Tồn kho (Báo động)</th>
+                               <th>Gợi ý Đặt thêm</th>
+                             </tr>
+                           </thead>
+                           <tbody>
+                             ${lowStock.map((item, index) => `
+                             <tr>
+                               <td>${index + 1}</td>
+                               <td><strong>${item.name}</strong> (${item.category})</td>
+                               <td style="color: red;">${item.currentStock} ${item.unit} (Min: ${item.minStock})</td>
+                               <td><strong>${item.minStock * 2} ${item.unit}</strong></td>
+                             </tr>
+                             `).join('')}
+                           </tbody>
+                         </table>
+                         
+                         <div class="footer">
+                           * PO này được tự động tạo bởi Hệ thống Quản trị Bếp SousChef AI.<br/>
+                           * Vui lòng liên hệ Trưởng bếp để xác nhận đơn giá trước khi duyệt.
+                         </div>
+                       </body>
+                     </html>
+                   `);
+                   
+                   printWindow.document.close();
+                   printWindow.focus();
+                   setTimeout(() => {
+                     printWindow.print();
+                     printWindow.close();
+                   }, 500);
+                }}
+                className="text-xs font-bold bg-neutral-100 text-neutral-900 px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-neutral-200 transition-colors"
+              >
+                Tạo Đơn Đi Chợ (PDF)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+               {['Công Ty CP Nông Sản Sạch', 'Vissan - Thịt Tươi Kho TPHCM', 'Hải Sản Chợ Lớn', 'Gia Vị Á Châu'].map((supplier, i) => (
+                 <div key={i} className="bg-white border border-neutral-100 p-5 rounded-2xl flex items-start justify-between group hover:border-neutral-300 transition-colors">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-neutral-900 text-sm">{supplier}</h4>
+                        <span className="w-2 h-2 rounded-full bg-green-500" title="Đang trực tuyến"></span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500">Cung cấp: {i === 0 ? 'Rau củ quả' : i === 1 ? 'Thịt heo, bò' : i === 2 ? 'Hải sản tươi sống' : 'Đồ khô, nước mắm'}</p>
+                      <div className="pt-2 flex items-center gap-2">
+                         <span className="text-[10px] font-bold bg-green-50 text-green-700 px-2 py-1 rounded-md">Chiết khấu 5%</span>
+                         <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-1 rounded-md">Giao trong 2h</span>
+                      </div>
+                    </div>
+                    <button className="w-8 h-8 rounded-full bg-neutral-50 flex items-center justify-center group-hover:bg-neutral-900 group-hover:text-white transition-colors text-neutral-400">
+                      <ArrowUpRight className="w-4 h-4" />
+                    </button>
+                 </div>
+               ))}
+            </div>
           </motion.div>
         )}
 
@@ -573,7 +776,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                 </div>
               ))}
 
-              {getLowStockItems().length === 0 && getLowMarginRecipes().length === 0 && (
+              {(getLowStockItems()?.length || 0) === 0 && (getLowMarginRecipes()?.length || 0) === 0 && (
                 <div className="text-center py-10 space-y-4">
                   <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto">
                     <Logo size={32} />
@@ -693,7 +896,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
 
       {/* Menu Capture & Analysis Modal */}
       <AnimatePresence>
-        {isCapturing && (
+        {(isCapturing || isScanningInvoice) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -707,27 +910,36 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             >
               <div className="p-6 border-b border-neutral-100 flex justify-between items-center bg-neutral-50/50">
                 <div>
-                  <h2 className="text-xl font-display font-bold text-neutral-900">Số hóa Menu</h2>
-                  <p className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">AI Menu Digitizer</p>
+                  <h2 className="text-xl font-display font-bold text-neutral-900">{isScanningInvoice ? "Quét hóa đơn nhập hàng" : "Số hóa Menu"}</h2>
+                  <p className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">{isScanningInvoice ? "AI Invoice Digitizer" : "AI Menu Digitizer"}</p>
                 </div>
-                <button onClick={() => { setIsCapturing(false); setAnalysisResult(null); }} className="p-2 bg-white rounded-full shadow-sm">
+                <button onClick={() => { setIsCapturing(false); setIsScanningInvoice(false); setAnalysisResult(null); setInvoiceAnalysisResult(null); }} className="p-2 bg-white rounded-full shadow-sm">
                   <X className="w-5 h-5 text-neutral-500" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-8">
-                {!analysisResult && !isAnalyzing ? (
+                {(!analysisResult && !invoiceAnalysisResult && !isAnalyzing) ? (
                   <div className="text-center space-y-8 py-12">
                     <div className="w-24 h-24 bg-neutral-50 rounded-full flex items-center justify-center mx-auto border-2 border-dashed border-neutral-200">
                       <Camera className="w-10 h-10 text-neutral-500" />
                     </div>
                     <div className="space-y-2">
-                      <h3 className="text-lg font-bold text-neutral-900">Chụp hoặc tải ảnh Menu</h3>
-                      <p className="text-sm text-neutral-500 max-w-xs mx-auto">AI sẽ tự động nhận diện món ăn, giá cả và gợi ý định lượng cho bạn.</p>
+                       {isScanningInvoice ? (
+                          <>
+                             <h3 className="text-lg font-bold text-neutral-900">Chụp hoặc tải ảnh Hóa Đơn</h3>
+                             <p className="text-sm text-neutral-500 max-w-xs mx-auto">AI sẽ tự động nhận diện nguyên liệu, số lượng và tổng tiền để cập nhật kho.</p>
+                          </>
+                       ) : (
+                          <>
+                             <h3 className="text-lg font-bold text-neutral-900">Chụp hoặc tải ảnh Menu</h3>
+                             <p className="text-sm text-neutral-500 max-w-xs mx-auto">AI sẽ tự động nhận diện món ăn, giá cả và gợi ý định lượng cho bạn.</p>
+                          </>
+                       )}
                     </div>
                     <label className="inline-flex items-center gap-2 px-8 py-4 bg-neutral-900 text-white rounded-xl font-bold text-sm cursor-pointer hover:bg-neutral-800 transition-all shadow-xl">
-                      <Upload className="w-4 h-4" /> Chọn ảnh Menu
-                      <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+                      <Upload className="w-4 h-4" /> Chọn ảnh {isScanningInvoice ? 'Hóa đơn' : 'Menu'}
+                      <input type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" className="hidden" onChange={handleFileUpload} />
                     </label>
                   </div>
                 ) : isAnalyzing ? (
@@ -743,24 +955,58 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <h3 className="text-lg font-bold text-neutral-900">Đang phân tích Menu...</h3>
-                      <p className="text-sm text-neutral-400">Đầu bếp AI đang đọc danh sách món ăn của bạn.</p>
+                      <h3 className="text-lg font-bold text-neutral-900">Đang phân tích hình ảnh...</h3>
+                      <p className="text-sm text-neutral-400">Đầu bếp AI đang đọc dữ liệu hệ thống.</p>
                     </div>
                   </div>
-                ) : (
+                ) : isScanningInvoice && invoiceAnalysisResult ? (
+                   <div className="space-y-8">
+                     <section className="bg-green-50 p-6 rounded-2xl border border-green-100 flex items-center justify-between">
+                       <div>
+                          <div className="flex items-center gap-3 mb-1">
+                            <CheckCircle2 className="w-5 h-5 text-green-600" />
+                            <h3 className="font-bold text-green-900">Kết quả phân tích Hóa Đơn</h3>
+                          </div>
+                          <p className="text-sm text-green-800 leading-relaxed font-bold">Tổng: {invoiceAnalysisResult.totalAmount?.toLocaleString() || 0}đ</p>
+                          <p className="text-[10px] text-green-700 uppercase tracking-widest">{invoiceAnalysisResult.supplierName || 'N/A'} - {invoiceAnalysisResult.date || 'N/A'}</p>
+                       </div>
+                       <div className="text-right">
+                          <p className="text-sm text-green-800 leading-relaxed">{invoiceAnalysisResult.summary}</p>
+                       </div>
+                     </section>
+
+                     <section className="space-y-4">
+                       <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách Nguyên Liệu ({invoiceAnalysisResult.items?.length || 0})</h3>
+                       <div className="grid grid-cols-1 gap-3">
+                         {invoiceAnalysisResult.items?.map((item, i) => (
+                           <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl flex justify-between items-center shadow-sm">
+                             <div>
+                               <p className="font-bold text-neutral-900">{item.name}</p>
+                               <p className="text-[10px] text-neutral-400">{item.quantity} {item.unit}</p>
+                             </div>
+                             <div className="text-right">
+                               <p className="font-bold text-neutral-900">{item.totalPrice?.toLocaleString() || 0}đ</p>
+                               <p className="text-[9px] text-neutral-400 uppercase font-bold">Thành tiền</p>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     </section>
+                   </div>
+                ) : analysisResult ? (
                   <div className="space-y-8">
                     <section className="bg-green-50 p-6 rounded-2xl border border-green-100">
                       <div className="flex items-center gap-3 mb-4">
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
-                        <h3 className="font-bold text-green-900">Kết quả phân tích</h3>
+                        <h3 className="font-bold text-green-900">Kết quả phân tích Menu</h3>
                       </div>
                       <p className="text-sm text-green-800 leading-relaxed">{analysisResult?.summary}</p>
                     </section>
 
                     <section className="space-y-4">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách món ăn nhận diện ({analysisResult?.dishes.length})</h3>
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách món ăn nhận diện ({analysisResult?.dishes?.length || 0})</h3>
                       <div className="grid grid-cols-1 gap-3">
-                        {analysisResult?.dishes.map((dish, i) => (
+                        {analysisResult?.dishes?.map((dish, i) => (
                           <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl flex justify-between items-center shadow-sm">
                             <div>
                               <p className="font-bold text-neutral-900">{dish.title}</p>
@@ -775,14 +1021,14 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                       </div>
                     </section>
 
-                    {analysisResult?.clarifyingQuestions && analysisResult.clarifyingQuestions.length > 0 && (
+                    {analysisResult?.clarifyingQuestions && (analysisResult.clarifyingQuestions?.length || 0) > 0 && (
                       <section className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                         <div className="flex items-center gap-3 mb-4">
                           <HelpCircle className="w-5 h-5 text-orange-600" />
                           <h3 className="font-bold text-orange-900">Câu hỏi từ Bếp Trưởng</h3>
                         </div>
                         <ul className="space-y-3">
-                          {analysisResult.clarifyingQuestions.map((q, i) => (
+                          {analysisResult.clarifyingQuestions?.map((q, i) => (
                             <li key={i} className="text-sm text-orange-800 flex gap-2">
                               <span className="font-bold">•</span> {q}
                             </li>
@@ -792,22 +1038,22 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                       </section>
                     )}
                   </div>
-                )}
+                ) : null}
               </div>
 
-              {analysisResult && (
+              {(analysisResult || invoiceAnalysisResult) && (
                 <div className="p-6 bg-white border-t border-neutral-100 flex gap-3">
                   <button 
-                    onClick={() => { setAnalysisResult(null); }}
+                    onClick={() => { setAnalysisResult(null); setInvoiceAnalysisResult(null); }}
                     className="flex-1 py-4 bg-neutral-100 text-neutral-900 rounded-xl font-bold text-sm"
                   >
                     Chụp lại
                   </button>
                   <button 
-                    onClick={handleSaveAnalyzedMenu}
+                    onClick={isScanningInvoice ? handleSaveAnalyzedInvoice : handleSaveAnalyzedMenu}
                     className="flex-1 py-4 bg-neutral-900 text-white rounded-xl font-bold text-sm shadow-xl"
                   >
-                    Lưu vào Menu Manager
+                    {isScanningInvoice ? "Cập nhật Kho" : "Lưu vào Menu Manager"}
                   </button>
                 </div>
               )}

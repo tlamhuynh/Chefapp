@@ -75,7 +75,11 @@ export function RecipeList() {
                 <div className="flex items-center gap-3 mt-1">
                   <div className="flex items-center gap-1 text-[10px] text-stone-400 uppercase tracking-wider">
                     <Calendar className="w-3 h-3" />
-                    {recipe.createdAt?.toDate().toLocaleDateString('vi-VN')}
+                    {recipe.createdAt && (
+                      typeof recipe.createdAt.toDate === 'function' 
+                        ? recipe.createdAt.toDate().toLocaleDateString('vi-VN')
+                        : new Date(recipe.createdAt).toLocaleDateString('vi-VN')
+                    )}
                   </div>
                   <div className="flex items-center gap-1 text-[10px] text-orange-600 font-bold uppercase tracking-wider">
                     <DollarSign className="w-3 h-3" />

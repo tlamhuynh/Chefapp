@@ -9,6 +9,7 @@ import { RecipeGenerator } from './components/RecipeGenerator';
 import { CreativeAgent } from './components/CreativeAgent';
 import { Profile } from './components/Profile';
 import { Gallery } from './components/Gallery';
+import { DebugLog } from './components/DebugLog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,13 +18,14 @@ import { Logo, LogoText } from './components/Logo';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'recipes' | 'chat' | 'profile' | 'creative' | 'gallery' | 'generator'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'menu' | 'recipes' | 'chat' | 'profile' | 'creative' | 'gallery' | 'generator' | 'debug'>('dashboard');
   const [preferences, setPreferences] = useState({
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-1.5-flash',
+    selectedModelId: 'gemini-flash-latest',
     showInternalThoughts: true,
+    darkMode: false,
     openaiKey: '',
     anthropicKey: '',
     googleKey: '',
@@ -32,6 +34,7 @@ export default function App() {
     groqKey: ''
   });
   const [showSetup, setShowSetup] = useState(false);
+  const [creativeActiveId, setCreativeActiveId] = useState<string | null>(localStorage.getItem('last_creative_conv_id'));
 
   useEffect(() => {
     testConnection();
@@ -104,6 +107,14 @@ export default function App() {
       alert(msg);
     }
   };
+
+  useEffect(() => {
+    if (preferences.darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [preferences.darkMode]);
 
   if (loading) {
     return (
@@ -199,7 +210,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+          <Layout activeTab={activeTab} setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -213,9 +224,22 @@ export default function App() {
                 {activeTab === 'menu' && <MenuManagement setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
                 {activeTab === 'recipes' && <RecipeList />}
                 {activeTab === 'generator' && <RecipeGenerator preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-                {activeTab === 'creative' && <CreativeAgent preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                {activeTab === 'creative' && (
+                  <CreativeAgent 
+                    preferences={preferences} 
+                    updatePreference={updatePreference} 
+                    setActiveTab={setActiveTab} 
+                    activeConversationId={creativeActiveId}
+                    setActiveConversationId={(id: string | null) => {
+                      setCreativeActiveId(id);
+                      if (id) localStorage.setItem('last_creative_conv_id', id);
+                      else localStorage.removeItem('last_creative_conv_id');
+                    }}
+                  />
+                )}
                 {activeTab === 'chat' && <ChefChat preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
                 {activeTab === 'gallery' && <Gallery />}
+                {activeTab === 'debug' && <DebugLog />}
                 {activeTab === 'profile' && <Profile user={user} preferences={preferences} updatePreference={updatePreference} />}
               </motion.div>
             </AnimatePresence>

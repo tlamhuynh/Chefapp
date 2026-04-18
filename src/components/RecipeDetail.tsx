@@ -392,7 +392,7 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
               </div>
               <div className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-sm">
                 <div className="markdown-body prose prose-stone prose-sm max-w-none text-stone-600 leading-relaxed">
-                  <ReactMarkdown>{recipe.instructions}</ReactMarkdown>
+                  <ReactMarkdown>{typeof recipe.instructions === 'string' ? recipe.instructions : Array.isArray(recipe.instructions) ? recipe.instructions.join('\n') : String(recipe.instructions || '')}</ReactMarkdown>
                 </div>
               </div>
             </section>
