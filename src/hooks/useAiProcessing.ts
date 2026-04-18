@@ -80,6 +80,10 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         ['gemini-2.0-flash']
       );
 
+      if (!result || !result.text) {
+        throw new Error("Không nhận được phản hồi text từ bộ lọc AI. (Có thể do lỗi định dạng JSON)");
+      }
+
       const aiMsgId = Math.random().toString(36).substring(7);
       await setDoc(doc(db, 'chats', aiMsgId), {
         text: result.text,
@@ -100,6 +104,20 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
     } catch (aiError: any) {
       console.error("AI Error:", aiError);
       setError(aiError.message || "Lỗi AI.");
+      
+      const errorMsgId = Math.random().toString(36).substring(7);
+      await setDoc(doc(db, 'chats', errorMsgId), {
+        text: `⚠️ **Lỗi hệ thống AI:** ${aiError.message || 'Không rõ nguyên nhân'}`,
+        sender: 'ai',
+        userId: auth.currentUser.uid,
+        conversationId: activeConversationId,
+        timestamp: serverTimestamp(),
+        suggestions: [
+          { label: '🔄 Thử lại', action: 'retry' }
+        ],
+        status: 'error'
+      });
+      
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
     } finally {
       isProcessingRef.current = false;
