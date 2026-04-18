@@ -1,19 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { auth, onAuthStateChanged, User, signInWithPopup, googleProvider, db, doc, getDoc, setDoc, testConnection, handleFirestoreError, OperationType, updateDoc, serverTimestamp } from './lib/firebase';
 import { Layout } from './components/Layout';
-import { Dashboard } from './components/Dashboard';
-import { RecipeList } from './components/RecipeList';
-import { MenuManagement } from './components/MenuManagement';
-import { ChefChat } from './components/ChefChat';
-import { RecipeGenerator } from './components/RecipeGenerator';
-import { CreativeAgent } from './components/CreativeAgent';
-import { Profile } from './components/Profile';
-import { Gallery } from './components/Gallery';
-import { DebugLog } from './components/DebugLog';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LogIn, ChefHat, Sparkles, Key, ArrowRight } from 'lucide-react';
+import { LogIn, ChefHat, Sparkles, Key, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo, LogoText } from './components/Logo';
+
+// Lazy load feature components to reduce initial bundle size for production
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const RecipeList = lazy(() => import('./components/RecipeList').then(m => ({ default: m.RecipeList })));
+const MenuManagement = lazy(() => import('./components/MenuManagement').then(m => ({ default: m.MenuManagement })));
+const ChefChat = lazy(() => import('./components/ChefChat').then(m => ({ default: m.ChefChat })));
+const RecipeGenerator = lazy(() => import('./components/RecipeGenerator').then(m => ({ default: m.RecipeGenerator })));
+const CreativeAgent = lazy(() => import('./components/CreativeAgent').then(m => ({ default: m.CreativeAgent })));
+const Profile = lazy(() => import('./components/Profile').then(m => ({ default: m.Profile })));
+const Gallery = lazy(() => import('./components/Gallery').then(m => ({ default: m.Gallery })));
+const DebugLog = lazy(() => import('./components/DebugLog').then(m => ({ default: m.DebugLog })));
+
+const LoadingSpinner = () => (
+  <div className="w-full h-[60vh] flex flex-col items-center justify-center gap-4 text-stone-400">
+    <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+    <span className="text-sm font-medium animate-pulse">Đang nạp dữ liệu phân hệ...</span>
+  </div>
+);
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -220,27 +229,29 @@ export default function App() {
                 transition={{ duration: 0.2 }}
                 className="h-full"
               >
-                {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
-                {activeTab === 'menu' && <MenuManagement setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
-                {activeTab === 'recipes' && <RecipeList />}
-                {activeTab === 'generator' && <RecipeGenerator preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-                {activeTab === 'creative' && (
-                  <CreativeAgent 
-                    preferences={preferences} 
-                    updatePreference={updatePreference} 
-                    setActiveTab={setActiveTab} 
-                    activeConversationId={creativeActiveId}
-                    setActiveConversationId={(id: string | null) => {
-                      setCreativeActiveId(id);
-                      if (id) localStorage.setItem('last_creative_conv_id', id);
-                      else localStorage.removeItem('last_creative_conv_id');
-                    }}
-                  />
-                )}
-                {activeTab === 'chat' && <ChefChat preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
-                {activeTab === 'gallery' && <Gallery />}
-                {activeTab === 'debug' && <DebugLog />}
-                {activeTab === 'profile' && <Profile user={user} preferences={preferences} updatePreference={updatePreference} />}
+                <Suspense fallback={<LoadingSpinner />}>
+                  {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
+                  {activeTab === 'menu' && <MenuManagement setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
+                  {activeTab === 'recipes' && <RecipeList />}
+                  {activeTab === 'generator' && <RecipeGenerator preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                  {activeTab === 'creative' && (
+                    <CreativeAgent 
+                      preferences={preferences} 
+                      updatePreference={updatePreference} 
+                      setActiveTab={setActiveTab} 
+                      activeConversationId={creativeActiveId}
+                      setActiveConversationId={(id: string | null) => {
+                        setCreativeActiveId(id);
+                        if (id) localStorage.setItem('last_creative_conv_id', id);
+                        else localStorage.removeItem('last_creative_conv_id');
+                      }}
+                    />
+                  )}
+                  {activeTab === 'chat' && <ChefChat preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                  {activeTab === 'gallery' && <Gallery />}
+                  {activeTab === 'debug' && <DebugLog />}
+                  {activeTab === 'profile' && <Profile user={user} preferences={preferences} updatePreference={updatePreference} />}
+                </Suspense>
               </motion.div>
             </AnimatePresence>
           </Layout>
