@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.chefchat.app',
-  appName: 'ChefChat',
+  appId: 'com.souschef.app',
+  appName: 'SousChef AI',
   webDir: 'dist'
 };
 

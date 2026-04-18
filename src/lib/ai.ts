@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { logger } from './logger';
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Initialize Gemini in frontend as per skill requirement
-const googleAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+// Initialize Gemini in frontend as per skill requirement. Provide a fallback string to prevent immediate crashes if env var is missing during initial load.
+const googleAI = new GoogleGenAI({ apiKey: (process.env.GEMINI_API_KEY || "dummy_key_to_prevent_crash_on_load") as string });
 
 // Types
 export type AIProvider = 'google' | 'openai' | 'anthropic' | 'nvidia' | 'groq' | 'openrouter';
