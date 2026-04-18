@@ -1,4 +1,4 @@
-package com.chefchat.app;
+package com.souschef.app;
 
 import com.getcapacitor.BridgeActivity;
 
