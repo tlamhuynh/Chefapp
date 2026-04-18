@@ -532,33 +532,52 @@ export async function multiAgentChat(
   // Agent 3: Orchestrator
   const orchestratorPrompt = `
     BẠN LÀ BẾP TRƯỞNG ĐIỀU PHỐI (ORCHESTRATOR).
-    Dưới đây là cuộc thảo luận nội bộ:
+    Dưới đây là cuộc thảo luận nội bộ giữa Creative Chef và Financial Expert:
     - Sáng tạo: ${proposal}
-    - Phản biện: ${review}
+    - Phản biện tài chính: ${review}
     
-    Nhiệm vụ: Tổng hợp câu trả lời cuối cùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI.
+    Nhiệm vụ: Tổng hợp câu trả lời cuối cùng cho người dùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI (proposedActions), kèm theo cấu trúc công thức (recipe) và gợi ý (suggestions) nếu phù hợp.
     
-    QUY TẮC TRẢ LỜI (TRẢ VỀ ĐÚNG JSON NÀY):
-    {
-      "text": "Câu trả lời cuối bằng Markdown đẹp cho người dùng",
-      "internalMonologue": "Tóm tắt cuộc thảo luận",
-      "proposedActions": [
-        { "type": "add_recipe", "data": { "title": "...", "ingredients": [], "instructions": "..." } },
-        { "type": "update_inventory", "data": { "name": "...", "amount": 0 } }
-      ]
-    }
+    QUY TẮC TRẢ LỜI:
+    1. TRONG TRƯỜNG 'text': Trình bày câu trả lời dưới dạng Markdown đẹp. KHÔNG ĐƯỢC trả về nguyên khối JSON trong phần này. Nếu có danh sách nguyên liệu, hãy dùng định dạng BẢNG (Table) Markdown để người dùng dễ theo dõi.
+    2. TRONG TRƯỜNG 'proposedActions': Đây là nơi chứa dữ liệu máy tính đọc được để thực thi hành động. PHẢI TRẢ VỀ mảng này nếu có hành động cần thiết (ví dụ: tạo công thức mới theo sáng tạo).
+    3. TRONG TRƯỜNG 'recipe': Gửi kèm thông tin công thức theo cấu trúc chi tiết (mảng nguyên liệu, hướng dẫn) ĐỂ HIỂN THỊ LƯU NHANH TRÊN MÀN HÌNH CHAT.
+    4. TRONG TRƯỜNG 'suggestions': Các hành động gợi ý tiếp theo giúp người dùng lựa chọn.
+    
+    CÁC LOẠI HÀNH ĐỘNG HỖ TRỢ:
+    1. 'add_recipe': Thêm một công thức mới. Data CẦN THIẾT: { title, ingredients: [{name, amount, unit}], instructions }.
+    2. 'update_inventory': Cập nhật số lượng tồn kho. Data CẦN THIẾT: { name, amount }.
+    
+    Nếu thảo luận có nhắc việc tạo món mới, HÃY CUNG CẤP CẢ 'recipe' VÀ hành động 'add_recipe' để hệ thống gợi ý lưu cho người dùng.
+    
+    Hãy luôn trả về kết quả KHÔNG CÓ BẤT KỲ ĐOẠN TEXT GÌ BÊN NGOÀI, CHỈ TRẢ VỀ JSON HỢP LỆ THEO ĐÚNG CẤU TRÚC SAU:
+    { "text": "Câu trả lời cuối...", "internalMonologue": "Tóm tắt 1 câu", "recipe": { "title": "Tên món", "time": "30p", "ingredients": [{ "name": "...", "amount": "...", "unit": "..." }], "instructions": ["b1", "b2"], "notes": "" }, "suggestions": [{ "label": "Lưu công thức", "action": "save_recipe" }, { "label": "Gợi ý nguyên liệu mua thêm", "action": "suggest_buy" }] }
   `;
 
   logger.info(`[multiAgentChat] Calling Orchestrator`);
   const responseSchema = z.object({
     text: z.string(),
     internalMonologue: z.string().optional(),
-    proposedActions: z.array(z.any()).optional()
+    proposedActions: z.array(z.object({
+      type: z.string(),
+      data: z.any(),
+      reason: z.string().optional()
+    })).optional(),
+    recipe: z.object({
+      title: z.string(),
+      description: z.string().optional(),
+      time: z.string().optional(),
+      difficulty: z.string().optional(),
+      ingredients: z.array(z.object({ name: z.string(), amount: z.union([z.string(), z.number()]).optional(), unit: z.string().optional() })).optional(),
+      instructions: z.array(z.string()).optional(),
+      notes: z.string().optional()
+    }).optional(),
+    suggestions: z.array(z.object({ label: z.string(), action: z.string() })).optional()
   });
 
   return await chatWithAI(
     modelId,
-    [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng." }],
+    [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng dưới dạng JSON chứa các trường: text, internalMonologue, proposedActions, recipe, suggestions." }],
     orchestratorPrompt,
     undefined,
     config,

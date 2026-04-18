@@ -90,6 +90,7 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         timestamp: serverTimestamp(),
         recipe: result.recipe,
         suggestions: result.suggestions,
+        proposedActions: result.proposedActions,
         status: 'completed'
       });
 
