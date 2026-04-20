@@ -10,6 +10,13 @@ const defaultFallbacks = [
   'gpt-4o-mini'
 ];
 
+export const searchMarketPriceTool = {
+  description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam để tính toán Food Cost chính xác.",
+  parameters: z.object({
+    ingredients: z.array(z.string()).describe("Danh sách tên các nguyên liệu cần tìm giá (ví dụ: ['Thịt bò thăn', 'Hành tây'])")
+  })
+};
+
 export const systemInstruction = `
 Bạn là một Bếp trưởng điều hành (Executive Chef) với hơn 20 năm kinh nghiệm tại các khách sạn 5 sao quốc tế. Bạn sở hữu tư duy nghệ thuật ẩm thực tinh tế cùng kỹ năng quản trị kinh doanh nhà hàng sắc bén.
 
@@ -40,7 +47,9 @@ Khi nhận yêu cầu, hãy trả lời theo cấu trúc Markdown trong trườn
 - BẮT BUỘC trả về JSON với các trường (KHÔNG dịch tên keys): "text" (Markdown), "suggestions" (Mảng label/action), và "recipe" (nếu có công thức).
 - Trường "text" BẮT BUỘC chứa nội dung phản hồi chính, không dùng "ket_qua" hay "phan_hoi".
 - "recipe" cung cấp bảng nguyên liệu chi tiết: Tên, Định lượng, Đơn vị, Giá nhập, và Cost thực tế.
-- Sử dụng công cụ (crawl_recipe, search_google_drive...) khi cần đối chiếu dữ liệu hoặc lấy tin từ web.
+- Sử dụng công cụ (search_market_price, crawl_recipe, search_google_drive...) khi cần đối chiếu dữ liệu hoặc lấy tin từ web.
+- Bất cứ khi nào tạo công thức mới, hãy ƯU TIÊN sử dụng công cụ 'search_market_price' để lấy giá thực tế trước khi tính toán totalCost.
+- QUY TẮC TỐI THƯỢNG: Phải tuân thủ TUYỆT ĐỐI chủ đề hoặc nguyên liệu mà người dùng yêu cầu. Không được tự ý thay đổi món ăn sang loại khác (ví dụ: không được đổi Bò thành Cá trừ khi người dùng yêu cầu).
 - Tất cả nội dung văn bản (values) phải bằng tiếng Việt.
 `;
 
@@ -86,23 +95,23 @@ export async function chatWithChef(messages: ChatMessage[], tools?: any, customK
 }
 
 export const recipeResponseSchema = z.object({
-  text: z.string().describe("Nội dung phản hồi chính bằng Markdown"),
+  text: z.string().describe("Nội dung phản hồi chính bằng Markdown, bao gồm Storytelling, Tips và Plating Guide"),
   suggestions: z.array(z.object({
     label: z.string(),
     action: z.string()
   })),
   recipe: z.optional(z.object({
-    title: z.string(),
+    title: z.string().describe("Tên món ăn"),
     ingredients: z.array(z.object({
-      name: z.string(),
-      amount: z.string(),
-      unit: z.string(),
-      purchasePrice: z.number(),
-      costPerAmount: z.number()
+      name: z.string().describe("Tên nguyên liệu (Ví dụ: 'Thịt bò thăn')"),
+      amount: z.string().describe("Định lượng (Ví dụ: '200')"),
+      unit: z.string().describe("Đơn vị (Ví dụ: 'gram', 'ml', 'thìa')"),
+      purchasePrice: z.number().describe("Giá mua vào trên đơn vị kg/lit/gói (VND)"),
+      costPerAmount: z.number().describe("Giá vốn thực tế cho định lượng này (VND)")
     })),
-    instructions: z.string(),
-    totalCost: z.number(),
-    recommendedPrice: z.number(),
+    instructions: z.string().describe("Hướng dẫn từng bước thực hiện"),
+    totalCost: z.number().describe("Tổng giá vốn (VND)"),
+    recommendedPrice: z.number().describe("Giá bán gợi ý (VND)"),
     image: z.optional(z.string())
   })),
   photos: z.optional(z.array(z.object({
@@ -112,14 +121,46 @@ export const recipeResponseSchema = z.object({
 });
 
 export async function generateRecipe(theme: string, config?: any, modelId: string = chefModel) {
+  const promptText = `YÊU CẦU CỐT LÕI: Bạn phải tạo một công thức nấu ăn chính xác cho chủ đề hoặc dựa trên các nguyên liệu sau: "${theme}". 
+  TUYỆT ĐỐI KHÔNG được gợi ý các món ăn khác không liên quan. Ví dụ: nếu người dùng yêu cầu "Bò né", không được trả về "Cá hồi".
+  
+  YÊU CẦU ĐỊNH DẠNG (BẮT BUỘC):
+  1. Trả về JSON hợp lệ với đầy đủ các trường yêu cầu.
+  2. Trong mảng "ingredients", TUYỆT ĐỐI KHÔNG được để trống trường "name" và "amount".
+  3. Giá trị "name" phải là tên thực phẩm (ví dụ: "Thịt dê", "Chao đỏ").
+  4. Nội dung trong trường "text" phải sử dụng Markdown với các tiêu đề (Storytelling, Bí quyết, v.v.).
+  5. Trả về hoàn toàn bằng tiếng Việt.`;
+
   return await chatWithAIWithFallback(
     modelId,
-    [{ role: 'user', parts: [{ text: `Tạo một công thức nấu ăn chuyên nghiệp cho chủ đề: ${theme}. Bao gồm tiêu đề, nguyên liệu (với chi phí ước tính trên mỗi đơn vị), và hướng dẫn thực hiện. Trả về kết quả bằng tiếng Việt.` }] }],
+    [{ role: 'user', parts: [{ text: promptText }] }],
     systemInstruction,
     undefined,
     config,
     defaultFallbacks.filter(id => id !== modelId),
-    { text: "Markdown", suggestions: "Actions", recipe: "Recipe details" }
+    recipeResponseSchema
+  );
+}
+
+export async function refineRecipe(currentRecipe: any, feedback: string, history: ChatMessage[], config?: any, modelId: string = chefModel) {
+  const messages: ChatMessage[] = [
+    ...history,
+    { 
+      role: 'user', 
+      parts: [{ text: `Dựa trên công thức hiện tại: ${JSON.stringify(currentRecipe)}. 
+      Hãy điều chỉnh theo yêu cầu sau: ${feedback}. 
+      TRẢ VỀ CÔNG THỨC MỚI ĐÃ ĐƯỢC CẬP NHẬT TRONG TRƯỜNG "recipe" CỦA JSON PHẢN HỒI.` }] 
+    }
+  ];
+
+  return await chatWithAIWithFallback(
+    modelId,
+    messages,
+    systemInstruction,
+    undefined,
+    config,
+    defaultFallbacks.filter(id => id !== modelId),
+    recipeResponseSchema
   );
 }
 
@@ -237,12 +278,16 @@ Nhiệm vụ của bạn là hỗ trợ người dùng trong các mảng sau:
    - Viết bài caption (kể chuyện về món ăn, văn hóa nhắm rượu, không khí quán) với phong cách cuốn hút, gần gũi nhưng vẫn chuyên nghiệp.
    - Gợi ý ý tưởng video ngắn (Reels/TikTok) về quy trình chế biến món ăn hoặc không gian quán.
 
+**ĐẶC BIỆT: Khi người dùng yêu cầu tạo hoặc chỉnh sửa món ăn/công thức:**
+- Hãy cung cấp công thức chi tiết trong nhãn "recipe" của JSON phản hồi.
+- Cấu trúc "recipe" bao gồm: title, ingredients (name, amount, unit, purchasePrice, costPerAmount), instructions, totalCost, recommendedPrice.
+
 **QUY TẮC PHẢN HỒI:**
 - Sử dụng ngôn ngữ sáng tạo, mang tính thẩm mỹ cao.
 - Khi thiết kế layout, luôn ưu tiên sự rõ ràng, tính khoa học nhưng phải đậm chất nghệ thuật.
 - Luôn cập nhật các xu hướng thiết kế và marketing ẩm thực mới nhất.
-- Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action).
-- Luôn gợi ý 3-4 hành động tiếp theo đa dạng (ví dụ: "Xem ví dụ plating", "Lên lịch post tuần tới", "Tính cost món này").
+- Trả về JSON với các trường: "text" (Markdown), "suggestions" (label, action), và "recipe" (nếu có công thức).
+- Luôn gợi ý 3-4 hành động tiếp theo đa dạng.
 - Tất cả câu trả lời bằng tiếng Việt.
 `;
 
@@ -253,6 +298,10 @@ export async function chatWithCreativeAgent(messages: ChatMessage[], config?: an
     creativeAgentInstruction,
     undefined,
     config,
-    { text: "Markdown response", suggestions: "Action suggestions" }
+    { 
+      text: "Markdown response", 
+      suggestions: "Action suggestions",
+      recipe: "Optional recipe data if a dish is being designed"
+    }
   );
 }

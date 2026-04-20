@@ -311,6 +311,7 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
           isProcessing={isGlobalProcessing}
           isActuallyTyping={isActuallyTyping}
           preferences={preferences}
+          updatePreference={updatePreference}
         />
       </div>
 

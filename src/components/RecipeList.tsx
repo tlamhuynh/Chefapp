@@ -67,13 +67,22 @@ export function RecipeList() {
               onClick={() => setSelectedRecipe(recipe)}
               className="w-full bg-white p-5 rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all text-left flex items-center gap-4 group"
             >
-              <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center group-hover:bg-orange-50 transition-colors">
-                <Logo size={28} variant="stone" className="opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+              <div className="w-14 h-14 bg-stone-50 rounded-2xl flex items-center justify-center group-hover:bg-orange-50 transition-colors overflow-hidden border border-stone-50 group-hover:border-orange-100">
+                {recipe.image ? (
+                  <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />
+                ) : (
+                  <Logo size={28} variant="stone" className="opacity-40 group-hover:opacity-100 group-hover:scale-110 transition-all" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-stone-900 truncate">{recipe.title}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors truncate">{recipe.title}</h3>
+                  <span className="text-[9px] font-bold text-stone-400 bg-stone-50 px-1 rounded border border-stone-100">
+                    v{(recipe.version || 1.0).toFixed(1)}
+                  </span>
+                </div>
                 <div className="flex items-center gap-3 mt-1">
-                  <div className="flex items-center gap-1 text-[10px] text-stone-400 uppercase tracking-wider">
+                  <div className="flex items-center gap-1 text-[10px] text-stone-400 uppercase tracking-widest font-bold">
                     <Calendar className="w-3 h-3" />
                     {recipe.createdAt && (
                       typeof recipe.createdAt.toDate === 'function' 
@@ -81,9 +90,9 @@ export function RecipeList() {
                         : new Date(recipe.createdAt).toLocaleDateString('vi-VN')
                     )}
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-orange-600 font-bold uppercase tracking-wider">
+                  <div className="flex items-center gap-1 text-[10px] text-orange-600 font-black uppercase tracking-widest">
                     <DollarSign className="w-3 h-3" />
-                    {recipe.recommendedPrice?.toLocaleString()}
+                    {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(recipe.recommendedPrice || 0)}
                   </div>
                 </div>
               </div>

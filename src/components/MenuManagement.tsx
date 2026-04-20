@@ -1006,16 +1006,31 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                     <section className="space-y-4">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách món ăn nhận diện ({analysisResult?.dishes?.length || 0})</h3>
                       <div className="grid grid-cols-1 gap-3">
-                        {analysisResult?.dishes?.map((dish, i) => (
-                          <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="font-bold text-neutral-900">{dish.title}</p>
-                              <p className="text-[10px] text-neutral-400">{dish.description || 'Không có mô tả'}</p>
+                         {analysisResult?.dishes?.map((dish, i) => (
+                          <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl space-y-3 shadow-sm">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-bold text-neutral-900">{dish.title}</p>
+                                <p className="text-[10px] text-neutral-400">{dish.description || 'Không có mô tả'}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-neutral-900">{dish.price?.toLocaleString()}đ</p>
+                                <p className="text-[9px] text-neutral-400 uppercase font-bold">Giá bán</p>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-bold text-neutral-900">{dish.price?.toLocaleString()}đ</p>
-                              <p className="text-[9px] text-neutral-400 uppercase font-bold">Giá bán</p>
-                            </div>
+                            
+                            {dish.potentialIngredients && dish.potentialIngredients.length > 0 && (
+                              <div className="pt-2 border-t border-neutral-50">
+                                <p className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 focus:text-neutral-900">Nguyên liệu dự đoán:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {dish.potentialIngredients.map((ing: string, j: number) => (
+                                    <span key={j} className="text-[9px] bg-neutral-50 text-neutral-600 px-2 py-0.5 rounded-md border border-neutral-100 italic">
+                                      {ing}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

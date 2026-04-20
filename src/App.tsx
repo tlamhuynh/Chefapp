@@ -46,6 +46,22 @@ export default function App() {
   const [creativeActiveId, setCreativeActiveId] = useState<string | null>(localStorage.getItem('last_creative_conv_id'));
 
   useEffect(() => {
+    if (creativeActiveId) {
+      localStorage.setItem('last_creative_conv_id', creativeActiveId);
+    } else {
+      localStorage.removeItem('last_creative_conv_id');
+    }
+  }, [creativeActiveId]);
+  const [generatorState, setGeneratorState] = useState<any>({
+    theme: '',
+    ingredients: [],
+    difficulty: 'medium',
+    generatedRecipe: null,
+    chatHistory: [],
+    monologue: []
+  });
+
+  useEffect(() => {
     testConnection();
     
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -233,7 +249,15 @@ export default function App() {
                   {activeTab === 'dashboard' && <Dashboard setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
                   {activeTab === 'menu' && <MenuManagement setActiveTab={setActiveTab} preferences={preferences} updatePreference={updatePreference} />}
                   {activeTab === 'recipes' && <RecipeList />}
-                  {activeTab === 'generator' && <RecipeGenerator preferences={preferences} updatePreference={updatePreference} setActiveTab={setActiveTab} />}
+                  {activeTab === 'generator' && (
+                    <RecipeGenerator 
+                      preferences={preferences} 
+                      updatePreference={updatePreference} 
+                      setActiveTab={setActiveTab} 
+                      persistedState={generatorState}
+                      setPersistedState={setGeneratorState}
+                    />
+                  )}
                   {activeTab === 'creative' && (
                     <CreativeAgent 
                       preferences={preferences} 

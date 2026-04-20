@@ -23,9 +23,14 @@ export const AVAILABLE_MODELS: AIModel[] = [
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Cực nhanh, thông minh và giá thành tối ưu.' },
   { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'groq', description: 'Tốc độ cực nhanh từ Groq. Phản hồi gần như tức thì.' },
+  { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'groq', description: 'Model tốc độ siêu nhanh và miễn phí từ Groq.' },
   { id: 'nvidia/meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (NVIDIA)', provider: 'nvidia', description: 'Model mạnh mẽ từ NVIDIA NIM, độ trễ thấp.' },
+  { id: 'nvidia/deepseek-ai/deepseek-r1', name: 'DeepSeek R1 (NVIDIA)', provider: 'nvidia', description: 'DeepSeek R1 chạy tối ưu trên kiến trúc NVIDIA.' },
+  { id: 'openrouter/google/gemini-2.0-flash-lite-preview-02-05:free', name: 'Gemini 2.0 Flash Lite (Free)', provider: 'openrouter', description: 'Model miễn phí qua OpenRouter.' },
+  { id: 'openrouter/meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', provider: 'openrouter', description: 'Llama 70B miễn phí từ OpenRouter.' },
   { id: 'openrouter/liquid/lfm-40b', name: 'Liquid LFM 40B (OpenRouter)', provider: 'openrouter', description: 'Mô hình hiệu suất tốt và linh hoạt.' },
   { id: 'openrouter/anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet (OpenRouter)', provider: 'openrouter', description: 'Truy cập qua OpenRouter' },
+  { id: 'nvidia/moonshotai/kimi-k2.5', name: 'Kimi 2.5 (NVIDIA)', provider: 'nvidia', description: 'Model Kimi thế hệ 2.5 mạnh mẽ từ Moonshot AI qua NVIDIA NIM.' },
 ];
 
 export interface AIConfig {
@@ -295,12 +300,14 @@ export async function chatWithAI(
     try {
       // Map prohibited or common IDs to recommended aliases for the @google/genai SDK
       let mappedModelId = modelId;
-      if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
+      if (modelId === 'gemini-3-flash-preview') {
+        mappedModelId = 'gemini-3-flash-preview';
+      } else if (modelId === 'gemini-3.1-pro-preview') {
+        mappedModelId = 'gemini-3.1-pro-preview';
+      } else if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
         mappedModelId = 'gemini-flash-latest';
       } else if (modelId.includes('pro') || modelId === 'gemini-1.5-pro') {
         mappedModelId = 'gemini-3.1-pro-preview';
-      } else if (modelId === 'gemini-3-flash-preview') {
-        mappedModelId = 'gemini-3-flash-preview';
       }
 
       const geminiMessages = convertToGeminiMessages(formattedMessages);
@@ -338,7 +345,10 @@ export async function chatWithAI(
       const resultText = res.text || (res.response && typeof res.response.text === 'function' ? res.response.text() : '');
 
       if (responseSchema) {
-        return robustParseJson(resultText || '{}');
+        if (!resultText || resultText.trim().length === 0) {
+          throw new Error("AI trả về kết quả trống hoặc không đúng định dạng JSON. Hãy thử lại hoặc đổi Model.");
+        }
+        return robustParseJson(resultText);
       }
 
       return {
@@ -367,10 +377,19 @@ export async function chatWithAI(
     apiKey = config?.groqKey || '';
     baseURL = 'https://api.groq.com/openai/v1/chat/completions';
     actualModelId = modelId.replace('groq/', '');
+    if (actualModelId.includes('deepseek-r1-distill-llama-70b')) {
+      actualModelId = 'llama-3.3-70b-versatile';
+    }
   } else if (modelId.startsWith('nvidia/')) {
     apiKey = config?.nvidiaKey || '';
     baseURL = 'https://integrate.api.nvidia.com/v1/chat/completions';
     actualModelId = modelId.replace('nvidia/', '');
+    // NVIDIA NIM does not currently support deepseek-r1 as a standard api model, fallback
+    if (actualModelId.includes('deepseek-r1') || actualModelId.includes('deepseek-ai')) {
+      actualModelId = 'meta/llama-3.3-70b-instruct';
+    } else if (actualModelId.includes('kimi-2.5')) {
+      actualModelId = 'moonshotai/kimi-k2.5';
+    }
   } else if (modelId.startsWith('gpt')) {
     apiKey = config?.openaiKey || '';
     baseURL = 'https://api.openai.com/v1/chat/completions';
@@ -379,8 +398,12 @@ export async function chatWithAI(
     baseURL = 'https://api.anthropic.com/v1/messages';
   }
 
+  // Disable Direct Client FETCH in standard web environments to avoid CORS issues.
+  // We will prefer the server-side proxy which is more reliable.
+  const isCapacitor = (window as any).Capacitor !== undefined;
+
   // Handle Anthropic specifically since its API structure is completely different
-  if (modelId.startsWith('claude') && apiKey && baseURL) {
+  if (isCapacitor && modelId.startsWith('claude') && apiKey && baseURL) {
     logger.info(`[chatWithAI] Using Direct Client FETCH for Anthropic ${modelId}`);
     try {
       const fetchPayload: any = {
@@ -426,7 +449,7 @@ export async function chatWithAI(
   }
 
   // Handle OpenAI-compatible endpoints
-  if (apiKey && baseURL && !modelId.startsWith('claude')) {
+  if (isCapacitor && apiKey && baseURL && !modelId.startsWith('claude')) {
     logger.info(`[chatWithAI] Using Direct Client FETCH (CORS Safe in Capacitor) for ${modelId}`);
     try {
       const fetchPayload: any = {
@@ -643,12 +666,14 @@ export async function generateProactiveInsights(
     try {
       // Map prohibited or common IDs to recommended aliases for the @google/genai SDK
       let mappedModelId = modelId;
-      if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
+      if (modelId === 'gemini-3-flash-preview') {
+        mappedModelId = 'gemini-3-flash-preview';
+      } else if (modelId === 'gemini-3.1-pro-preview') {
+        mappedModelId = 'gemini-3.1-pro-preview';
+      } else if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
         mappedModelId = 'gemini-flash-latest';
       } else if (modelId.includes('pro') || modelId === 'gemini-1.5-pro') {
         mappedModelId = 'gemini-3.1-pro-preview';
-      } else if (modelId === 'gemini-3-flash-preview') {
-        mappedModelId = 'gemini-3-flash-preview';
       }
 
       const systemPrompt = `
@@ -791,14 +816,17 @@ export async function multiAgentChatWithFallback(
       return await multiAgentChat(currentModelId, messages, systemInstruction, config, inventoryData, recipeData);
     } catch (error: any) {
       logger.warn(`[multiAgentChatWithFallback] Error with ${currentModelId}: ${error.message}`);
-      lastError = error;
+      
+      // Enhance error message with model info
+      const errMsg = error.message || String(error);
+      lastError = new Error(`[${currentModelId.split('/').pop()}] ${errMsg}`);
 
       // If it's a rate limit, high demand, or quota issue, wait a bit before trying fallback
-      const errorMsg = error.message.toLowerCase();
-      if (error.message.includes('[429]') || 
-          errorMsg.includes('high demand') || 
-          errorMsg.includes('quota') || 
-          errorMsg.includes('limit')) {
+      const errorStr = errMsg.toLowerCase();
+      if (errorStr.includes('[429]') || 
+          errorStr.includes('high demand') || 
+          errorStr.includes('quota') || 
+          errorStr.includes('limit')) {
         logger.info(`[multiAgentChatWithFallback] Temporary error or limit reached, waiting 2s before fallback...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }

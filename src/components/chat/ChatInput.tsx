@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Paperclip, X, Send, Loader2, Sparkles, Cpu } from 'lucide-react';
+import { Paperclip, X, Send, Loader2, Sparkles, Cpu, Bot } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { AVAILABLE_MODELS } from '../../lib/ai';
 
 interface ChatInputProps {
   inputText: string;
@@ -15,6 +16,7 @@ interface ChatInputProps {
   isProcessing: boolean;
   isActuallyTyping: boolean;
   preferences: any;
+  updatePreference: (key: string, value: any) => void;
 }
 
 export function ChatInput({
@@ -28,7 +30,8 @@ export function ChatInput({
   handleFileChange,
   isProcessing,
   isActuallyTyping,
-  preferences
+  preferences,
+  updatePreference
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,20 +133,28 @@ export function ChatInput({
 
       <div className="flex items-center justify-between px-8">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 px-3 py-1 bg-neutral-50 rounded-full border border-neutral-100">
-             <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400">Hệ thống Neural Hoạt động</span>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50/50 rounded-full border border-emerald-100">
+             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+             <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-emerald-600 hidden xs:inline">Live</span>
           </div>
-          <div className="flex items-center gap-2 group cursor-help">
-             <Cpu className="w-3.5 h-3.5 text-neutral-300 group-hover:text-neutral-900 transition-colors" />
-             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-300 group-hover:text-neutral-900 transition-colors">
-               Mô hình: {preferences.selectedModelId?.split('/').pop()}
-             </span>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-neutral-50 rounded-full border border-neutral-100 group hover:border-neutral-900 transition-all">
+             <Bot className="w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-900 transition-colors" />
+             <select
+                 value={preferences.selectedModelId}
+                 onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+                 className="outline-none appearance-none bg-transparent text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400 group-hover:text-neutral-900 transition-colors cursor-pointer"
+             >
+                 {AVAILABLE_MODELS.map(m => (
+                     <option key={m.id} value={m.id}>
+                         {m.name}
+                     </option>
+                 ))}
+             </select>
           </div>
         </div>
         
-        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-200">
-           Chef Intelligence v4.0.2
+        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-200 hidden sm:block">
+           AI v4.0.2
         </p>
       </div>
     </div>

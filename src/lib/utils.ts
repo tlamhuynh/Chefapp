@@ -9,13 +9,19 @@ export interface Ingredient {
   name: string;
   amount: string;
   unit: string;
-  price: number;
+  purchasePrice: number;
+  costPerAmount: number;
 }
 
 export interface Recipe {
   title: string;
+  version: number;
   ingredients: Ingredient[];
-  instructions: string;
+  instructions: string | string[];
+  totalCost: number;
+  recommendedPrice: number;
+  theme?: string;
+  image?: string;
   [key: string]: any;
 }
 
@@ -30,17 +36,18 @@ export function validateRecipe(recipe: Partial<Recipe>): string | null {
     if (!ing.name || typeof ing.name !== 'string' || ing.name.trim().length === 0) {
       return "Tên nguyên liệu không được để trống.";
     }
-    if (typeof ing.amount !== 'string') {
-      return "Số lượng nguyên liệu phải là chuỗi.";
+    if (typeof ing.amount !== 'string' && typeof ing.amount !== 'number') {
+      return "Số lượng nguyên liệu không hợp lệ.";
     }
     if (typeof ing.unit !== 'string') {
       return "Đơn vị nguyên liệu phải là chuỗi.";
     }
-    if (typeof ing.price !== 'number' || isNaN(ing.price)) {
-      return "Giá nguyên liệu phải là một số.";
+    if (typeof ing.purchasePrice === 'string') {
+      const p = parseFloat(ing.purchasePrice);
+      if (isNaN(p)) return "Giá mua phải là số.";
     }
   }
-  if (!recipe.instructions || typeof recipe.instructions !== 'string' || recipe.instructions.trim().length === 0) {
+  if (!recipe.instructions || (typeof recipe.instructions !== 'string' && !Array.isArray(recipe.instructions))) {
     return "Hướng dẫn thực hiện không được để trống.";
   }
   return null;

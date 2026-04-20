@@ -70,6 +70,16 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       
       // Since the user wants "everything", I'll implement a Custom MultiAgent with Streaming capacity
       
+      // Prepare fallback models (try Gemini as a reliable fallback if custom selection fails)
+      const allFallbacks = [
+        'gemini-2.0-flash', 
+        'gemini-1.5-flash', 
+        'gpt-4o-mini',
+        'groq/llama-3.3-70b-versatile',
+        'openrouter/google/gemini-2.0-flash-lite-preview-02-05:free',
+        'nvidia/meta/llama-3.3-70b-instruct'
+      ].filter(id => id !== preferences.selectedModelId);
+
       const result = await multiAgentChatWithFallback(
         preferences.selectedModelId,
         history,
@@ -77,11 +87,11 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         aiConfig,
         inventory,
         recipes,
-        ['gemini-2.0-flash']
+        allFallbacks
       );
 
       if (!result || !result.text) {
-        throw new Error("Không nhận được phản hồi text từ bộ lọc AI. (Có thể do lỗi định dạng JSON)");
+        throw new Error("Không nhận dạng được phản hồi từ mô hình. Lỗi định dạng JSON.");
       }
 
       const aiMsgId = Math.random().toString(36).substring(7);
@@ -103,11 +113,30 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
 
     } catch (aiError: any) {
       console.error("AI Error:", aiError);
-      setError(aiError.message || "Lỗi AI.");
+      
+      let rawMsg = aiError.message || "Lỗi giao tiếp với AI.";
+      // Try to parse clean error out of rawMsg if it's JSON
+      if (rawMsg.startsWith('{') || rawMsg.includes('{')) {
+          try {
+              const startIdx = rawMsg.indexOf('{');
+              const jsonPart = rawMsg.substring(startIdx);
+              const parsed = JSON.parse(jsonPart);
+              if (parsed.error && parsed.error.message) {
+                  rawMsg = parsed.error.message;
+              } else if (parsed.message) {
+                  rawMsg = parsed.message;
+              }
+          } catch(e) {}
+      }
+      
+      // Shorten extremely long messages
+      const shortMsg = rawMsg.length > 200 ? rawMsg.substring(0, 200) + '...' : rawMsg;
+
+      setError(shortMsg);
       
       const errorMsgId = Math.random().toString(36).substring(7);
       await setDoc(doc(db, 'chats', errorMsgId), {
-        text: `⚠️ **Lỗi hệ thống AI:** ${aiError.message || 'Không rõ nguyên nhân'}`,
+        text: `⚠️ **Lỗi hệ thống AI:** ${shortMsg}`,
         sender: 'ai',
         userId: auth.currentUser.uid,
         conversationId: activeConversationId,

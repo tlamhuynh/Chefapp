@@ -1,28 +1,95 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package } from 'lucide-react';
-import { generateRecipe } from '../lib/gemini';
+import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package, Bot, Send, MessageSquare, History, Trash2 } from 'lucide-react';
+import { generateRecipe, refineRecipe, ChatMessage } from '../lib/gemini';
 import { AVAILABLE_MODELS } from '../lib/ai';
-import { db, collection, addDoc, serverTimestamp, auth, getDocs } from '../lib/firebase';
+import { db, collection, addDoc, serverTimestamp, auth, getDocs, onSnapshot, query, where, orderBy, deleteDoc, doc, writeBatch } from '../lib/firebase';
 import { validateRecipe, cn } from '../lib/utils';
+import ReactMarkdown from 'react-markdown';
 
 interface RecipeGeneratorProps {
   preferences: any;
   updatePreference: (key: string, value: string) => void;
   setActiveTab: (tab: any) => void;
+  persistedState?: any;
+  setPersistedState?: (state: any) => void;
 }
 
-export function RecipeGenerator({ preferences, updatePreference, setActiveTab }: RecipeGeneratorProps) {
-  const [theme, setTheme] = useState('');
+export function RecipeGenerator({ preferences, updatePreference, setActiveTab, persistedState, setPersistedState }: RecipeGeneratorProps) {
+  const [theme, setTheme] = useState(persistedState?.theme || '');
   const [ingredientInput, setIngredientInput] = useState('');
-  const [ingredients, setIngredients] = useState<string[]>([]);
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [ingredients, setIngredients] = useState<string[]>(persistedState?.ingredients || []);
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(persistedState?.difficulty || 'medium');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedRecipe, setGeneratedRecipe] = useState<any>(null);
+  const [generatedRecipe, setGeneratedRecipe] = useState<any>(persistedState?.generatedRecipe || null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isFetchingInventory, setIsFetchingInventory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [monologue, setMonologue] = useState<string[]>(persistedState?.monologue || []);
+  const [creationHistory, setCreationHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Chat Refinement State
+  const [chatInput, setChatInput] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>(persistedState?.chatHistory || []);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Persistence logic: Sync local state to App state on unmount
+  const stateRef = useRef({
+    theme,
+    ingredients,
+    difficulty,
+    generatedRecipe,
+    chatHistory,
+    monologue
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      theme,
+      ingredients,
+      difficulty,
+      generatedRecipe,
+      chatHistory,
+      monologue
+    };
+  }, [theme, ingredients, difficulty, generatedRecipe, chatHistory, monologue]);
+
+  useEffect(() => {
+    return () => {
+      if (setPersistedState) {
+        setPersistedState(stateRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const q = query(
+      collection(db, 'creation_history'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const history = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCreationHistory(history);
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatHistory]);
 
   const fetchFromInventory = async () => {
     setIsFetchingInventory(true);
@@ -57,6 +124,37 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
     setIngredients(ingredients.filter(i => i !== ing));
   };
 
+  const handleDeleteFromHistory = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'creation_history', id));
+    } catch (err) {
+      console.error("Error deleting history:", err);
+    }
+  };
+
+  const handleSelectFromHistory = (h: any) => {
+    setGeneratedRecipe(h);
+    if (h.chatHistory) {
+      setChatHistory(h.chatHistory);
+    }
+  };
+
+  const handleClearAllHistory = async () => {
+    if (!auth.currentUser || !confirm('Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)')) return;
+    try {
+      const q = query(
+        collection(db, 'creation_history'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (err) {
+      console.error("Error clearing history:", err);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!theme && ingredients.length === 0) return;
 
@@ -64,6 +162,8 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
     setGeneratedRecipe(null);
     setSaveSuccess(false);
     setError(null);
+    setChatHistory([]); // Reset chat history for new recipe
+    setMonologue(["Đang khởi tạo Creative Chef...", "Phân tích yêu cầu ẩm thực..."]);
 
     try {
       const prompt = `Tạo một công thức nấu ăn chuyên nghiệp.
@@ -81,8 +181,65 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
         groqKey: preferences.groqKey
       };
 
-      const recipe = await generateRecipe(prompt, aiConfig, preferences.selectedModelId);
-      setGeneratedRecipe(recipe);
+      // Mocking sub-agent background steps for better UX
+      const monologues = [
+        "Đang khởi tạo Creative Chef...",
+        "Phân tích yêu cầu ẩm thực...",
+        "Triệu hồi Market Research Agent...",
+        "Đang tra cứu giá nguyên liệu tại Market Hub VN...",
+        "Financial Expert đang cân đối định lượng...",
+        "Orchestrator đang tổng hợp công thức cuối cùng..."
+      ];
+
+      let monologueIdx = 0;
+      const monologueInterval = setInterval(() => {
+        if (monologueIdx < monologues.length) {
+          setMonologue(prev => [...prev.slice(-4), monologues[monologueIdx]]);
+          monologueIdx++;
+        } else {
+          clearInterval(monologueInterval);
+        }
+      }, 1500);
+
+      const result = await generateRecipe(prompt, aiConfig, preferences.selectedModelId);
+      
+      clearInterval(monologueInterval);
+      setMonologue(["Hoàn tất! Công thức đã sẵn sàng."]);
+      
+      // Ensure version is set
+      if (result.recipe) {
+        result.recipe.version = 1.0;
+        setGeneratedRecipe(result);
+
+        // Auto-save to creation_history if user is logged in
+        if (auth.currentUser) {
+          try {
+            const docRef = await addDoc(collection(db, 'creation_history'), {
+              recipe: result.recipe,
+              text: result.text,
+              chatHistory: [{ role: 'model', parts: [{ text: result.text }] }],
+              userId: auth.currentUser.uid,
+              createdAt: serverTimestamp(),
+              source: 'generator'
+            });
+            // Update the recipe with its database ID so the delete button works
+            setGeneratedRecipe(prev => prev ? { ...prev, id: docRef.id } : null);
+          } catch (err) {
+            console.error("Auto-save failed", err);
+          }
+        }
+      } else if (result.text) {
+        // AI returned text but no structured recipe object (rare but possible)
+        setGeneratedRecipe(result);
+        setError("AI đã tạo nội dung nhưng thiếu cấu trúc công thức chi tiết. Bạn có thể xem nội dung trong phần chat bên dưới hoặc nhấn 'Sáng tạo lại'.");
+      } else {
+        throw new Error("AI không trả về kết quả hợp lệ (Kết quả trống). Vui lòng thử lại hoặc đổi Model trong Cài đặt.");
+      }
+      
+      // Initialize chat history with the creation result
+      if (result.text) {
+        setChatHistory([{ role: 'model', parts: [{ text: result.text }] }]);
+      }
     } catch (error: any) {
       console.error("Generation failed", error);
       let errorMsg = error.message || "Không thể tạo công thức. Vui lòng kiểm tra API Key.";
@@ -95,10 +252,53 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
     }
   };
 
+  const handleRefine = async () => {
+    if (!chatInput.trim() || !generatedRecipe || isRefining) return;
+
+    const currentFeedback = chatInput;
+    setChatInput('');
+    setIsRefining(true);
+    setError(null);
+
+    // Add user message to history
+    const updatedHistory: ChatMessage[] = [
+      ...chatHistory,
+      { role: 'user', parts: [{ text: currentFeedback }] }
+    ];
+    setChatHistory(updatedHistory);
+
+    try {
+      const aiConfig = { 
+        openaiKey: preferences.openaiKey, 
+        anthropicKey: preferences.anthropicKey, 
+        googleKey: preferences.googleKey,
+        openrouterKey: preferences.openrouterKey,
+        nvidiaKey: preferences.nvidiaKey,
+        groqKey: preferences.groqKey
+      };
+
+      const result = await refineRecipe(generatedRecipe.recipe, currentFeedback, chatHistory, aiConfig, preferences.selectedModelId);
+      
+      if (result.recipe) {
+        setGeneratedRecipe(result);
+      }
+      
+      // Add model response to history
+      if (result.text) {
+        setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: result.text }] }]);
+      }
+    } catch (error: any) {
+      console.error("Refinement failed", error);
+      setError("Không thể điều chỉnh công thức: " + (error.message || "Lỗi không xác định"));
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!generatedRecipe || !auth.currentUser) return;
 
-    const error = validateRecipe(generatedRecipe);
+    const error = validateRecipe(generatedRecipe.recipe);
     if (error) {
       alert(error);
       return;
@@ -147,31 +347,117 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
           </motion.div>
         )}
       </AnimatePresence>
-      <header className="space-y-2">
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-orange-100 rounded-2xl">
-              <Wand2 className="w-6 h-6 text-orange-600" />
+      <header className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-100">
+              <ChefHat className="w-4 h-4 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Sáng tạo Công thức AI</h1>
+            <div>
+              <h1 className="text-lg font-bold text-stone-900 tracking-tight leading-none">AI Lab</h1>
+              <p className="text-[8px] text-stone-400 font-bold uppercase tracking-widest mt-0.5">Sáng tác công thức</p>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Mô hình AI</span>
-            <select
-              value={preferences.selectedModelId}
-              onChange={(e) => updatePreference('selectedModelId', e.target.value)}
-              className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[10px] appearance-none hover:text-orange-700 transition-colors text-right"
+          <div className="flex items-center gap-1.5 font-sans">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className={cn(
+                "px-2.5 py-1.5 rounded-lg text-[8px] font-bold uppercase tracking-widest transition-all border flex items-center gap-1.5",
+                showHistory ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-500 border-stone-100 hover:border-orange-200"
+              )}
             >
-              {AVAILABLE_MODELS.map(m => (
-                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              <Clock className="w-3 h-3" />
+              Lịch sử {creationHistory.length > 0 ? `(${creationHistory.length})` : ""}
+            </button>
+            <div className="flex items-center gap-1.5 bg-stone-50 px-2 py-1.5 rounded-lg border border-stone-100 group hover:border-orange-200 transition-all">
+              <Bot className="w-3 h-3 text-stone-400 group-hover:text-orange-600 transition-colors" />
+              <select
+                value={preferences.selectedModelId}
+                onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+                className="bg-transparent border-none p-0 font-bold text-stone-500 group-hover:text-stone-900 uppercase tracking-widest cursor-pointer focus:ring-0 text-[8px] appearance-none transition-colors"
+              >
+                {AVAILABLE_MODELS.map(m => (
+                  <option key={m.id} value={m.id} className="text-stone-900 bg-white">
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-        <p className="text-stone-500 text-sm">Kết hợp chủ đề và nguyên liệu để tạo ra những món ăn độc bản.</p>
       </header>
+
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-white rounded-[2rem] border border-stone-100 p-5 space-y-4 shadow-sm mb-4">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <History className="w-3 h-3 text-stone-400" />
+                  <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Bản thảo từ database</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {creationHistory.length > 0 && (
+                    <button 
+                      onClick={handleClearAllHistory}
+                      className="text-[9px] font-bold text-red-400 hover:text-red-600 transition-colors flex items-center gap-1 group/clear"
+                    >
+                      <Trash2 className="w-3 h-3 group-hover/clear:scale-110 transition-transform" />
+                      Xoá hết
+                    </button>
+                  )}
+                  <p className="text-[8px] text-stone-300 font-bold italic uppercase tracking-wider underline">Tự động sao lưu</p>
+                </div>
+              </div>
+              {creationHistory.length > 0 ? (
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 px-1">
+                  {creationHistory.map((h, i) => (
+                    <div key={h.id || i} className="flex-shrink-0 relative group">
+                      <button
+                        onClick={() => handleSelectFromHistory(h)}
+                        className={cn(
+                          "w-48 p-4 rounded-2xl border transition-all text-left space-y-2",
+                          generatedRecipe?.id === h.id ? "bg-orange-50 border-orange-200 shadow-sm" : "bg-stone-50 border-stone-100 hover:border-stone-300"
+                        )}
+                      >
+                        <h4 className="text-xs font-bold text-stone-900 truncate">{h.recipe?.title || 'Công thức chưa đặt tên'}</h4>
+                        <p className="text-[9px] text-orange-600 font-bold">
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe?.totalCost || 0)}
+                        </p>
+                        <p className="text-[8px] text-stone-400 uppercase font-bold tracking-tighter">
+                          {h.createdAt?.toDate ? h.createdAt.toDate().toLocaleDateString() : 'Vừa xong'}
+                        </p>
+                      </button>
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (confirm('Bạn có chắc chắn muốn xoá bản thảo này?')) {
+                            handleDeleteFromHistory(h.id); 
+                          }
+                        }}
+                        className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-lg active:scale-95 z-10 sm:opacity-0 sm:group-hover:opacity-100"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center bg-stone-50 rounded-2xl border border-dashed border-stone-200">
+                  <Clock className="w-8 h-8 text-stone-200 mx-auto mb-2" />
+                  <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Chưa có lịch sử trong database</p>
+                  <p className="text-[9px] text-stone-300 mt-1">Các món bạn vừa tạo sẽ tự động lưu tại đây.</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Input Section */}
@@ -238,19 +524,22 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-stone-400 ml-1">Độ khó</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-1">Độ khó & Kỹ năng</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['easy', 'medium', 'hard'] as const).map(level => (
                   <button
                     key={level}
                     onClick={() => setDifficulty(level)}
                     className={cn(
-                      "py-3 rounded-2xl text-xs font-bold uppercase tracking-wider transition-all border",
+                      "py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border flex flex-col items-center gap-1",
                       difficulty === level 
-                        ? "bg-stone-900 text-white border-stone-900 shadow-lg shadow-stone-200" 
+                        ? "bg-stone-900 text-white border-stone-900 shadow-md shadow-stone-200" 
                         : "bg-white text-stone-400 border-stone-100 hover:border-stone-200"
                     )}
                   >
+                    <span className="text-base">
+                      {level === 'easy' ? '👌' : level === 'medium' ? '👍' : '💪'}
+                    </span>
                     {level === 'easy' ? 'Dễ' : level === 'medium' ? 'Vừa' : 'Khó'}
                   </button>
                 ))}
@@ -275,6 +564,49 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
               )}
             </button>
           </section>
+
+          {/* Subagent Monologue (Background) */}
+          <AnimatePresence>
+            {(isGenerating || monologue.length > 0) && (
+              <motion.section
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-stone-900 rounded-[2rem] p-5 space-y-4 border border-stone-800 shadow-2xl relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 p-4">
+                   <div className="flex gap-1">
+                     <div className="w-1 h-1 bg-orange-500 rounded-full animate-pulse" />
+                     <div className="w-1 h-1 bg-orange-500 rounded-full animate-pulse delay-75" />
+                     <div className="w-1 h-1 bg-orange-500 rounded-full animate-pulse delay-150" />
+                   </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-orange-400" />
+                  <h3 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Sub-Agent Monologue</h3>
+                </div>
+                <div className="space-y-2.5">
+                  {monologue.map((text, i) => (
+                    <motion.div
+                      key={text + i}
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-start gap-2"
+                    >
+                      <div className="mt-1.5 w-1 h-1 bg-stone-700 rounded-full shrink-0" />
+                      <p className="text-[11px] text-stone-500 font-medium leading-relaxed italic">{text}</p>
+                    </motion.div>
+                  ))}
+                  {isGenerating && (
+                    <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-stone-800/50 rounded-xl w-fit">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Hệ thống đang hoạt động ngầm</span>
+                    </div>
+                  )}
+                </div>
+              </motion.section>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Result Section */}
@@ -313,6 +645,31 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
                   <p className="text-stone-400 text-xs animate-bounce">Đang cân bằng hương vị & tính toán chi phí</p>
                 </div>
               </motion.div>
+            ) : generatedRecipe && !generatedRecipe.recipe ? (
+              <motion.div
+                key="no-data"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="h-[400px] flex flex-col items-center justify-center text-center p-8 space-y-6 border border-stone-100 rounded-[2.5rem] bg-white"
+              >
+                <div className="p-4 bg-orange-50 rounded-full">
+                  <AlertCircle className="w-12 h-12 text-orange-400" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-bold text-stone-900">Không tìm thấy cấu trúc công thức</h3>
+                  <p className="text-stone-400 text-[10px] leading-relaxed px-4">
+                    AI đã tạo ra phản hồi nhưng không cung cấp được bảng nguyên liệu và cost chi tiết. 
+                    Bạn có thể xem phản hồi này trong phần **"Trao đổi với Chef"** bên dưới hoặc thử lại với yêu cầu rõ ràng hơn.
+                  </p>
+                </div>
+                <button
+                  onClick={handleGenerate}
+                  className="px-6 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-800 transition-all active:scale-95"
+                >
+                  Thử sáng tạo lại
+                </button>
+              </motion.div>
             ) : (
               <motion.div
                 key="result"
@@ -321,13 +678,37 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
                 className="bg-white rounded-[2.5rem] border border-stone-100 shadow-xl overflow-hidden flex flex-col h-full"
               >
                 <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-orange-600">
-                      <Utensils className="w-4 h-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest">Công thức mới</span>
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-orange-600">
+                          <Utensils className="w-3.5 h-3.5" />
+                          <span className="text-[9px] font-bold uppercase tracking-widest">Kiệt tác mới</span>
+                        </div>
+                        <h2 className="text-xl font-bold text-stone-900 leading-tight break-words">{generatedRecipe.recipe?.title}</h2>
+                      </div>
+                      {generatedRecipe.id && (
+                        <button 
+                          onClick={() => {
+                            if (confirm('Bạn có chắc chắn muốn xoá bản thảo này không?')) {
+                              handleDeleteFromHistory(generatedRecipe.id);
+                              setGeneratedRecipe(null);
+                            }
+                          }}
+                          className="p-2 hover:bg-red-50 text-stone-300 hover:text-red-500 transition-all rounded-xl border border-stone-50"
+                          title="Xoá bản thảo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <h2 className="text-2xl font-bold text-stone-900 leading-tight">{generatedRecipe.recipe?.title}</h2>
-                  </div>
+
+                    {generatedRecipe.text && (
+                      <div className="prose prose-stone prose-sm max-w-none">
+                        <div className="text-[11px] text-stone-600 leading-relaxed font-medium">
+                          <ReactMarkdown>{generatedRecipe.text}</ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-stone-50 p-4 rounded-2xl space-y-1">
@@ -347,15 +728,82 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab }:
                   <div className="space-y-4">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Nguyên liệu chính</h3>
                     <div className="space-y-2">
-                      {generatedRecipe.recipe?.ingredients.slice(0, 5).map((ing: any, i: number) => (
-                        <div key={i} className="flex justify-between items-center text-sm">
-                          <span className="text-stone-600">{ing.name}</span>
-                          <span className="font-medium text-stone-900">{ing.amount} {ing.unit}</span>
+                       {generatedRecipe.recipe?.ingredients ? (
+                         generatedRecipe.recipe.ingredients.slice(0, 15).map((ing: any, i: number) => (
+                           <div key={i} className="flex justify-between items-center text-sm border-b border-stone-50 pb-2 last:border-0">
+                             <div className="flex flex-col flex-1 min-w-0">
+                               <span className="text-stone-900 font-bold truncate">
+                                 {ing.name && ing.name.trim().length > 0 ? ing.name : (ing.label || 'Tên nguyên liệu')}
+                               </span>
+                               <span className="text-[9px] text-stone-400 font-bold uppercase tracking-widest truncate">
+                                 {ing.amount && ing.unit ? `${ing.amount} ${ing.unit}` : (ing.amount || ing.unit || 'Định lượng theo Chef')}
+                               </span>
+                             </div>
+                             <div className="text-right">
+                               <p className="text-[10px] font-bold text-stone-900">
+                                 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(ing.costPerAmount || 0)}
+                               </p>
+                             </div>
+                           </div>
+                         ))
+                       ) : (
+                         <p className="text-[10px] text-stone-400 italic">Đang tải danh sách nguyên liệu...</p>
+                       )}
+                       {(generatedRecipe.recipe?.ingredients?.length || 0) > 15 && (
+                         <p className="text-[10px] text-stone-400 italic">... và {(generatedRecipe.recipe?.ingredients?.length || 0) - 15} nguyên liệu khác</p>
+                       )}
+                    </div>
+                  </div>
+
+                  {/* Smart Chat Refinement Area */}
+                  <div className="pt-4 border-t border-stone-100 flex flex-col gap-4">
+                    <div className="flex items-center gap-2 text-stone-900">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Trao đổi thông minh với Chef AI</span>
+                    </div>
+                    
+                    <div className="max-h-[400px] overflow-y-auto no-scrollbar space-y-3 p-1 bg-stone-50/30 rounded-2xl">
+                      {chatHistory.map((msg, idx) => (
+                        <div key={idx} className={cn(
+                          "flex flex-col gap-1 max-w-[90%]",
+                          msg.role === 'user' ? "ml-auto items-end" : "items-start"
+                        )}>
+                          <div className={cn(
+                            "px-3 py-2 rounded-2xl text-[11px] font-medium leading-relaxed",
+                            msg.role === 'user' ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-700"
+                          )}>
+                             <div className={cn("prose prose-stone prose-xs max-w-none", msg.role === 'user' && "prose-invert")}>
+                                <ReactMarkdown>{msg.parts[0].text}</ReactMarkdown>
+                             </div>
+                          </div>
                         </div>
                       ))}
-                      {generatedRecipe.recipe?.ingredients.length > 5 && (
-                        <p className="text-[10px] text-stone-400 italic">... và {generatedRecipe.recipe.ingredients.length - 5} nguyên liệu khác</p>
+                      {isRefining && (
+                         <div className="flex items-center gap-2 text-stone-300">
+                           <Loader2 className="w-3 h-3 animate-spin" />
+                           <span className="text-[10px] font-medium animate-pulse">Bếp trưởng đang điều chỉnh...</span>
+                         </div>
                       )}
+                      <div ref={chatEndRef} />
+                    </div>
+
+                    <div className="relative group/chat">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleRefine()}
+                        placeholder="Yêu cầu Chef điều chỉnh (ví dụ: 'Cho ít muối hơn', 'Thay thịt bằng đậu hũ')..."
+                        disabled={isRefining}
+                        className="w-full bg-stone-50 border-none rounded-xl py-3 pl-4 pr-10 text-xs focus:ring-1 focus:ring-stone-200 transition-all font-medium placeholder:text-stone-300"
+                      />
+                      <button
+                        onClick={handleRefine}
+                        disabled={!chatInput.trim() || isRefining}
+                        className="absolute right-2 top-1.5 bottom-1.5 w-8 bg-stone-900 text-white rounded-lg flex items-center justify-center disabled:opacity-30 hover:bg-stone-800 transition-all active:scale-95 shadow-sm"
+                      >
+                         {isRefining ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                      </button>
                     </div>
                   </div>
                 </div>

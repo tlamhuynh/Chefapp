@@ -129,6 +129,10 @@ export function RecipeCard({
     }, 500);
   };
 
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+  };
+
   return (
     <motion.div 
       whileHover={{ y: -4 }}
@@ -185,11 +189,29 @@ export function RecipeCard({
               <div className="h-[1px] flex-1 bg-neutral-100 dark:bg-white/5" />
             </div>
             <div className="grid grid-cols-1 gap-y-2">
-              {recipe.ingredients.slice(0, 8).map((ing, i) => (
+              {recipe.ingredients.map((ing, i) => (
                 <div key={i} className="flex justify-between items-center group/ing">
                   <span className="text-xs text-neutral-500 dark:text-neutral-400 group-hover/ing:text-neutral-900 dark:group-hover/ing:text-white font-medium transition-colors">{ing.name}</span>
                   <div className="h-[1px] flex-1 border-b border-dotted border-neutral-200 dark:border-white/5 mx-3 opacity-50" />
                   <span className="text-xs text-neutral-900 dark:text-white font-bold">{ing.amount} <span className="font-normal opacity-50 underline underline-offset-4 decoration-neutral-100 dark:decoration-white/10">{ing.unit}</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {recipe.instructions && (recipe.instructions.length > 0) && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="h-[1px] flex-1 bg-neutral-100 dark:bg-white/5" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Hướng dẫn</span>
+              <div className="h-[1px] flex-1 bg-neutral-100 dark:bg-white/5" />
+            </div>
+            <div className="space-y-3">
+              {(Array.isArray(recipe.instructions) ? recipe.instructions : [recipe.instructions]).map((step, i) => (
+                <div key={i} className="flex gap-4">
+                  <span className="text-[10px] font-bold text-neutral-300 dark:text-neutral-700 mt-1">{i + 1}</span>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">{step}</p>
                 </div>
               ))}
             </div>
@@ -201,7 +223,7 @@ export function RecipeCard({
               <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-1">
                  <DollarSign className="w-2.5 h-2.5" /> Food Cost
               </span>
-              <p className="text-lg font-display text-neutral-900 dark:text-white font-bold">{foodCost.toLocaleString()}</p>
+              <p className="text-sm font-display text-neutral-900 dark:text-white font-bold truncate">{formatCurrency(foodCost)}</p>
            </div>
            <div className="space-y-1">
               <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-1">
@@ -213,7 +235,7 @@ export function RecipeCard({
            </div>
            <div className="space-y-1 text-right">
               <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block">Giá Đề Xuất</span>
-              <p className="text-lg font-display text-neutral-900 dark:text-white font-bold">{retailPrice.toLocaleString()}</p>
+              <p className="text-sm font-display text-neutral-900 dark:text-white font-bold truncate">{formatCurrency(retailPrice)}</p>
            </div>
         </div>
 

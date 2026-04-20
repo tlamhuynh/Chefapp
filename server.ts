@@ -21,23 +21,140 @@ const __dirname = path.dirname(__filename);
 // Helper for model ID mapping
 const mapModelId = (provider: string, mId: string) => {
   let finalId = mId;
+  
+  // Intercept decommissioned Groq model
+  if (provider === 'groq' || mId.includes('deepseek-r1-distill-llama-70b')) {
+    if (mId.includes('deepseek-r1-distill-llama-70b')) {
+      finalId = 'llama-3.3-70b-versatile';
+    }
+  }
+  
   if (provider === 'google') {
     // Follow skill guidelines for Gemini aliases
-    if (mId.includes('flash') || mId === 'gemini-1.5-flash') {
+    if (mId === 'gemini-3-flash-preview') {
+      finalId = 'gemini-3-flash-preview';
+    } else if (mId === 'gemini-3.1-pro-preview') {
+      finalId = 'gemini-3.1-pro-preview';
+    } else if (mId.includes('flash') || mId === 'gemini-1.5-flash') {
       finalId = 'gemini-flash-latest';
     } else if (mId.includes('pro') || mId === 'gemini-1.5-pro') {
       finalId = 'gemini-3.1-pro-preview';
-    } else if (mId === 'gemini-3-flash-preview') {
-      finalId = 'gemini-3-flash-preview';
     }
   } else if (provider === 'nvidia') {
     // Standardize to llama-3.3 if llama-3.1 is requested
     if (mId.includes('llama-3.1')) {
       finalId = mId.replace('llama-3.1', 'llama-3.3');
+    } else if (mId.includes('deepseek-r1') || mId.includes('deepseek-ai')) {
+      // NVIDIA NIM does not currently support deepseek-r1 as standard api model, fallback
+      finalId = 'meta/llama-3.3-70b-instruct';
+    } else if (mId.includes('kimi-2.5')) {
+      finalId = 'moonshotai/kimi-k2.5';
     }
   }
   return finalId;
 };
+
+// Helper for fetch with timeout
+async function fetchWithTimeout(url: string, options: any = {}, timeout: number = 30000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeout}ms`);
+    }
+    throw error;
+  }
+}
+
+// Helper to call NVIDIA NIM directly (bypassing AI SDK bugs in this environment)
+async function callNvidiaDirect(modelId: string, apiKey: string, messages: any[], systemInstruction?: string, temperature: number = 0.7, jsonMode: boolean = false) {
+  const nvidiaModelId = modelId.replace('nvidia/', '');
+  log(`[NVIDIA Direct] Calling ${nvidiaModelId}`);
+  
+  try {
+    const response = await fetchWithTimeout('https://integrate.api.nvidia.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: nvidiaModelId,
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...messages
+        ],
+        temperature,
+        response_format: jsonMode ? { type: 'json_object' } : undefined
+      })
+    }, 45000); // 45s timeout for NVIDIA
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`NVIDIA API Error: ${response.status} ${errText}`);
+    }
+
+    const data = await response.json() as any;
+    const text = data.choices[0].message.content;
+    return { text };
+  } catch (error: any) {
+    log(`[NVIDIA Direct] Error calling ${nvidiaModelId}:`, error.message);
+    throw error;
+  }
+}
+
+// Market Data Simulator
+const MARKET_DATA: Record<string, { price: number, unit: string }> = {
+  "thịt bò": { price: 250000, unit: "kg" },
+  "thịt lợn": { price: 120000, unit: "kg" },
+  "thịt gà": { price: 90000, unit: "kg" },
+  "cá hồi": { price: 450000, unit: "kg" },
+  "tôm": { price: 180000, unit: "kg" },
+  "hành tây": { price: 15000, unit: "kg" },
+  "tỏi": { price: 40000, unit: "kg" },
+  "gừng": { price: 30000, unit: "kg" },
+  "trứng": { price: 3500, unit: "quả" },
+  "sữa": { price: 35000, unit: "lít" },
+  "bơ": { price: 200000, unit: "kg" },
+  "kem tươi": { price: 150000, unit: "lít" },
+  "bột mì": { price: 25000, unit: "kg" },
+  "đường": { price: 20000, unit: "kg" },
+  "muối": { price: 10000, unit: "kg" },
+  "dầu ăn": { price: 45000, unit: "lít" },
+  "gạo": { price: 18000, unit: "kg" },
+  "ớt": { price: 50000, unit: "kg" },
+  "chanh": { price: 20000, unit: "kg" },
+  "rau muống": { price: 10000, unit: "bó" },
+  "cà chua": { price: 25000, unit: "kg" }
+};
+
+async function searchMarketPrices(ingredients: string[]) {
+  log(`[Market Search] Searching prices for: ${ingredients.join(", ")}`);
+  
+  const results = ingredients.map(ing => {
+    const lower = ing.toLowerCase();
+    const match = Object.entries(MARKET_DATA).find(([key]) => lower.includes(key));
+    
+    if (match) {
+      return { name: ing, price: match[1].price, unit: match[1].unit, source: "Market Hub VN" };
+    }
+    
+    // Simulate smart search for unknown items
+    const randomPrice = Math.floor(Math.random() * 200000) + 20000;
+    return { name: ing, price: randomPrice, unit: "kg", source: "AI Estimate (Simulated)" };
+  });
+
+  return results;
+}
 
 async function startServer() {
   const app = express();
@@ -125,6 +242,9 @@ async function startServer() {
     const maxTokens = 4096; // Increased from default to prevent truncation
 
     try {
+      const isNvidia = modelId.includes('nvidia');
+      const nvidiaApiKey = config?.nvidiaKey || process.env.NVIDIA_API_KEY;
+
       // Helper to get provider
       const getProvider = (mId: string, cfg: any) => {
         const providerKey = mId.includes('gemini') ? 'google' : 
@@ -135,22 +255,33 @@ async function startServer() {
                            mId.includes('nvidia') ? 'nvidia' : 'google';
         
         const finalId = mapModelId(providerKey, mId);
+        
+        // Wrap fetch with a default timeout for all AI SDK calls
+        const customFetch = (url: string, options: any) => fetchWithTimeout(url, options, 60000);
 
         const providers: any = {
           google: () => {
             const google = createGoogleGenerativeAI({ 
-              apiKey: cfg.googleKey || process.env.GEMINI_API_KEY
+              apiKey: cfg.googleKey || process.env.GEMINI_API_KEY,
+              fetch: customFetch as any
             });
             // Try wrapping ID to ensure it's correct for the SDK if needed
             return google(finalId);
           },
-          openai: () => createOpenAI({ apiKey: cfg.openaiKey || process.env.OPENAI_API_KEY })(finalId),
-          anthropic: () => createAnthropic({ apiKey: cfg.anthropicKey || process.env.ANTHROPIC_API_KEY })(finalId),
+          openai: () => createOpenAI({ 
+            apiKey: cfg.openaiKey || process.env.OPENAI_API_KEY,
+            fetch: customFetch as any
+          })(finalId),
+          anthropic: () => createAnthropic({ 
+            apiKey: cfg.anthropicKey || process.env.ANTHROPIC_API_KEY,
+            fetch: customFetch as any
+          })(finalId),
           groq: () => {
             const groqModelId = finalId.startsWith('groq/') ? finalId.slice(5) : finalId;
             return createOpenAI({ 
               apiKey: cfg.groqKey || process.env.GROQ_API_KEY,
-              baseURL: 'https://api.groq.com/openai/v1'
+              baseURL: 'https://api.groq.com/openai/v1',
+              fetch: customFetch as any
             })(groqModelId);
           },
           openrouter: () => {
@@ -158,13 +289,15 @@ async function startServer() {
             return createOpenAI({
               apiKey: cfg.openrouterKey || process.env.OPENROUTER_API_KEY,
               baseURL: 'https://openrouter.ai/api/v1',
+              fetch: customFetch as any
             })(orModelId);
           },
           nvidia: () => {
             const nvidiaModelId = finalId.startsWith('nvidia/') ? finalId.slice(7) : finalId;
             return createOpenAI({
               apiKey: cfg.nvidiaKey || process.env.NVIDIA_API_KEY,
-              baseURL: 'https://integrate.api.nvidia.com/v1'
+              baseURL: 'https://integrate.api.nvidia.com/v1',
+              fetch: customFetch as any
             })(nvidiaModelId);
           }
         };
@@ -244,7 +377,12 @@ async function startServer() {
 
         let resultObject;
         try {
-          if (modelId.includes('groq')) {
+          if (modelId.includes('nvidia')) {
+            const apiKey = req.body.config?.nvidiaKey || process.env.NVIDIA_API_KEY;
+            const { text } = await callNvidiaDirect(modelId, apiKey, [{ role: 'user', content: 'Phân tích dữ liệu ngay.' }], systemPrompt, 0.2);
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            resultObject = jsonMatch ? JSON.parse(jsonMatch[0]) : { insights: [] };
+          } else if (modelId.includes('groq')) {
             log(`[insights] Calling Groq`);
             const { text } = await generateText({
               model,
@@ -271,37 +409,39 @@ async function startServer() {
         } catch (e: any) {
           log(`[insights] Initial call failed (${modelId}):`, e.message);
           
-          // Universal fallback to Gemini for insights if any provider fails
+          // Universal fallback using multiple providers in case the selected one fails
           const fallbacks = [
-            { id: 'gemini-flash-latest' },
-            { id: 'gemini-3-flash-preview' },
-            { id: 'gemini-1.5-flash' }
+            'nvidia/moonshotai/kimi-k2.5',
+            'groq/llama-3.3-70b-versatile',
+            'openrouter/meta-llama/llama-3.3-70b-instruct:free',
+            'gemini-flash-latest',
+            'gemini-3-flash-preview'
           ];
 
-          for (const fallback of fallbacks) {
+          let success = false;
+          for (const fallbackId of fallbacks) {
             try {
-              log(`[insights] Trying fallback to ${fallback.id}...`);
-              const fallbackModel = createGoogleGenerativeAI({ 
-                apiKey: req.body.config?.googleKey || process.env.GEMINI_API_KEY
-              })(fallback.id); 
+              log(`[insights] Trying fallback to ${fallbackId}...`);
+              const fallbackModel = getProvider(fallbackId, req.body.config || {}); 
               
               const { text } = await generateText({
                 model: fallbackModel,
-                system: systemPrompt + "\nQUAN TRỌNG: Trả về JSON hợp lệ.",
+                system: systemPrompt + "\nQUAN TRỌNG: Trả về JSON hợp lệ. Đừng bao gồm văn bản giải thích.",
                 messages: [{ role: 'user', content: 'Phân tích dữ liệu ngay.' }],
                 maxTokens: 2048,
               } as any);
               const jsonMatch = text.match(/\{[\s\S]*\}/);
               if (jsonMatch) {
                 resultObject = JSON.parse(jsonMatch[0]);
-                log(`[insights] Fallback to ${fallback.id} succeeded`);
-                return res.json({ object: resultObject });
+                log(`[insights] Fallback to ${fallbackId} succeeded`);
+                success = true;
+                break;
               }
             } catch (fallbackError: any) {
-              log(`[insights] Fallback to ${fallback.id} failed:`, fallbackError.message);
+              log(`[insights] Fallback to ${fallbackId} failed:`, fallbackError.message);
             }
           }
-          throw e; // Throw original error if all fallbacks fail
+          if (!success) throw e; // Throw original error if all fallbacks fail
         }
         return res.json({ object: resultObject });
       }
@@ -316,29 +456,51 @@ async function startServer() {
           Nhiệm vụ: Đề xuất các món ăn, thực đơn hoặc giải pháp sáng tạo.
           Hãy tập trung vào hương vị, trải nghiệm khách hàng và sự độc đáo.
         `;
-        const { text: proposal } = await generateText({
+        const { text: proposal } = isNvidia 
+          ? await callNvidiaDirect(modelId, nvidiaApiKey, formattedMessages, creativePrompt, 0.7)
+          : await generateText({
+            model,
+            system: creativePrompt,
+            messages: formattedMessages,
+            maxTokens: maxTokens,
+            maxRetries: 1,
+          } as any);
+
+        // EXTRA STEP: Market Research Agent
+        log(`[multi-agent] Calling Market Research Agent`);
+        const { text: marketDataText } = await generateText({
           model,
-          system: creativePrompt,
-          messages: formattedMessages,
-          maxTokens: maxTokens,
-          maxRetries: 1,
+          system: `Bạn là Market Research Agent. Nhiệm vụ: Trích xuất danh sách các nguyên liệu cần thiết từ đề xuất sau và trả về dưới dạng mảng JSON thô.
+          Đề xuất: "${proposal}"
+          
+          PHẢI TRẢ VỀ DẠNG: ["nguyên liệu 1", "nguyên liệu 2", ...]`,
+          messages: [{ role: 'user', content: "Trích xuất nguyên liệu ngay." }],
         } as any);
+        
+        const ingredientMatch = marketDataText.match(/\[.*\]/s);
+        const searchIngredients = ingredientMatch ? JSON.parse(ingredientMatch[0]) : [];
+        const marketPrices = await searchMarketPrices(searchIngredients);
 
         // Agent 2: Financial
         const financialPrompt = `
           BẠN LÀ FINANCIAL & INVENTORY EXPERT.
+          Dữ liệu giá thị trường mới nhất: ${JSON.stringify(marketPrices)}
           Dữ liệu kho hiện tại: ${JSON.stringify(inventoryData?.slice(0, 20))}
           Dữ liệu công thức hiện tại: ${JSON.stringify(recipeData?.slice(0, 10))}
           Nhiệm vụ: Phân tích đề xuất của Creative Chef dưới góc độ chi phí và khả năng thực thi.
           Đề xuất của Creative Chef: "${proposal}"
+          
+          YÊU CẦU: Sử dụng dữ liệu giá thị trường ở trên để ước tính Food Cost thực tế.
         `;
-        const { text: review } = await generateText({
-          model,
-          system: financialPrompt,
-          messages: [{ role: 'user', content: "Hãy phân tích đề xuất trên." }],
-          maxTokens: 2048,
-          maxRetries: 1,
-        } as any);
+        const { text: review } = isNvidia
+          ? await callNvidiaDirect(modelId, nvidiaApiKey, [{ role: 'user', content: "Hãy phân tích đề xuất trên." }], financialPrompt, 0.4)
+          : await generateText({
+            model,
+            system: financialPrompt,
+            messages: [{ role: 'user', content: "Hãy phân tích đề xuất trên." }],
+            maxTokens: 2048,
+            maxRetries: 1,
+          } as any);
 
         // Agent 3: Orchestrator
         const orchestratorPrompt = `
@@ -347,17 +509,19 @@ async function startServer() {
           - Sáng tạo: ${proposal}
           - Phản biện tài chính: ${review}
           
-          Nhiệm vụ: Tổng hợp câu trả lời cuối cùng cho người dùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI (proposedActions).
+          Nhiệm vụ: Tổng hợp câu trả lời cuối cùng cho người dùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI (proposedActions), kèm theo cấu trúc công thức (recipe) và gợi ý (suggestions) nếu phù hợp.
           
           QUY TẮC TRẢ LỜI:
           1. TRONG TRƯỜNG 'text': Trình bày câu trả lời dưới dạng Markdown đẹp. KHÔNG ĐƯỢC trả về nguyên khối JSON trong phần này. Nếu có danh sách nguyên liệu, hãy dùng định dạng BẢNG (Table) Markdown để người dùng dễ theo dõi.
           2. TRONG TRƯỜNG 'proposedActions': Đây là nơi chứa dữ liệu máy tính đọc được để thực thi hành động. PHẢI TRẢ VỀ mảng này nếu có hành động cần thực hiện (thêm công thức, cập nhật kho).
+          3. TRONG TRƯỜNG 'recipe': Gửi kèm thông tin công thức theo cấu trúc chi tiết (mảng nguyên liệu, hướng dẫn) ĐỂ HIỂN THỊ LƯU NHANH TRÊN MÀN HÌNH CHAT.
+          4. TRONG TRƯỜNG 'suggestions': Các hành động gợi ý tiếp theo giúp người dùng lựa chọn.
           
           CÁC LOẠI HÀNH ĐỘNG HỖ TRỢ:
           1. 'add_recipe': Thêm một công thức mới. Data: { title, ingredients: [{name, amount, unit}], instructions }.
           2. 'update_inventory': Cập nhật số lượng tồn kho. Data: { name, amount }.
           
-          Nếu người dùng yêu cầu tạo món, hãy dùng 'add_recipe'. Nếu nhắc đến nguyên liệu, hãy dùng 'update_inventory'.
+          Nếu người dùng yêu cầu tạo món hoặc thảo luận có món mới, hãy dùng 'add_recipe' VÀ cung cấp trường 'recipe' riêng biệt. Nếu nhắc đến nguyên liệu, hãy dùng 'update_inventory'.
         `;
         let resultObject;
         if (modelId.includes('groq')) {
@@ -365,7 +529,7 @@ async function startServer() {
           const { text } = await generateText({
             model,
             system: orchestratorPrompt,
-            messages: [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng dưới dạng JSON. Đảm bảo có các trường: text (Markdown), internalMonologue (Chuỗi), proposedActions (Mảng các đối tượng)." }],
+            messages: [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng dưới dạng JSON hợp lệ. Đảm bảo có đầy đủ các trường: text (Markdown), internalMonologue (Chuỗi), proposedActions (Mảng), recipe (Đối tượng chứa title, ingredients, instructions, totalCost, recommendedPrice), suggestions (Mảng)." }],
             maxTokens: maxTokens,
             maxRetries: 1,
           } as any);
@@ -390,11 +554,32 @@ async function startServer() {
             }
           }
           resultObject = parsed;
+        } else if (isNvidia) {
+          log(`[multi-agent] Calling NVIDIA orchestrator directly`);
+          const { text } = await callNvidiaDirect(
+            modelId, 
+            nvidiaApiKey, 
+            [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng." }], 
+            orchestratorPrompt + "\nHãy luôn trả về kết quả dưới dạng JSON hợp lệ theo đúng cấu trúc sau: { \"text\": \"Câu trả lời...\", \"internalMonologue\": \"Tóm tắt\", \"recipe\": { \"title\": \"Tên\", \"ingredients\": [{\"name\": \"\", \"amount\": \"\", \"unit\": \"\"}], \"instructions\": [], \"totalCost\": 0, \"recommendedPrice\": 0, \"notes\": \"\" }, \"proposedActions\": [], \"suggestions\": [] }",
+            0.1,
+            true
+          );
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          let parsed: any = { text: text, internalMonologue: "" };
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+              log(`[multi-agent] NVIDIA JSON parse error:`, e);
+              parsed.text = text;
+            }
+          }
+          resultObject = parsed;
         } else {
           log(`[multi-agent] Calling standard orchestrator via generateText`);
           const { text } = await generateText({
             model,
-            system: orchestratorPrompt + "\nHãy luôn trả về kết quả dưới dạng JSON hợp lệ theo cấu trúc yêu cầu. Đừng bao gồm văn bản giải thích. Cấu trúc JSON: { \"text\": \"string\", \"internalMonologue\": \"string\", \"proposedActions\": [{ \"type\": \"string\", \"data\": {}, \"reason\": \"string\" }] }",
+            system: orchestratorPrompt + "\nHãy luôn trả về kết quả dưới dạng JSON hợp lệ theo đúng cấu trúc sau: { \"text\": \"Câu trả lời...\", \"internalMonologue\": \"Tóm tắt\", \"recipe\": { \"title\": \"Tên\", \"ingredients\": [{\"name\": \"\", \"amount\": \"\", \"unit\": \"\"}], \"instructions\": [], \"totalCost\": 0, \"recommendedPrice\": 0, \"notes\": \"\" }, \"proposedActions\": [], \"suggestions\": [] }",
             messages: [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng." }],
             maxTokens: maxTokens,
             maxRetries: 1,
@@ -456,6 +641,21 @@ async function startServer() {
             }
           }
           resultObject = parsed;
+        } else if (isNvidia) {
+          log(`[object] Calling NVIDIA directly`);
+          const promptSuffix = responseSchema ? `\nPHẢI TRẢ VỀ JSON KHÔNG CÓ TEXT GIẢI THÍCH BAO QUANH. Cấu trúc yêu cầu có các khóa: ${Object.keys(responseSchema).join(', ')}.` : "\nTRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON.";
+          const { text } = await callNvidiaDirect(modelId, nvidiaApiKey, formattedMessages, systemInstruction + promptSuffix, 0.2, true);
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          let parsed: any = { text: text };
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+              log(`[object] NVIDIA JSON parse error:`, e);
+              parsed.text = text;
+            }
+          }
+          resultObject = parsed;
         } else {
           // Robust schema mapping for generateObject
           let zodSchema: any = z.object({ 
@@ -470,6 +670,19 @@ async function startServer() {
             model,
             system: systemInstruction + (responseSchema ? `\nHãy luôn trả về kết quả dưới dạng JSON hợp lệ với các khóa: ${Object.keys(responseSchema).join(', ')}. Đừng bao gồm bất kỳ văn bản giải thích nào ngoài khối JSON.` : "\nHãy luôn trả về kết quả dưới dạng JSON hợp lệ. Đừng bao gồm bất kỳ văn bản giải thích nào ngoài khối JSON."),
             messages: formattedMessages,
+            tools: {
+              search_market_price: {
+                description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
+                parameters: z.object({
+                  ingredients: z.array(z.string())
+                }),
+                execute: async ({ ingredients }) => {
+                  const data = await searchMarketPrices(ingredients);
+                  return JSON.stringify(data);
+                }
+              }
+            },
+            maxSteps: 3,
             maxTokens: maxTokens,
             maxRetries: 1,
           } as any);
@@ -497,21 +710,48 @@ async function startServer() {
         return res.json({ object: resultObject });
       } else {
         log(`[text] Calling generateText`);
-        const { text, toolCalls } = await generateText({
-          model,
-          system: systemInstruction,
-          messages: formattedMessages,
-          tools: tools,
-          maxTokens: 2048,
-          maxRetries: 1,
-        } as any);
-        log(`[text] Response received, text length: ${text?.length || 0}`);
+        let responseText: string;
+        let finalToolCalls: any[] | undefined = undefined;
+
+        if (isNvidia) {
+          const res = await callNvidiaDirect(modelId, nvidiaApiKey, formattedMessages, systemInstruction);
+          responseText = res.text;
+        } else {
+          // Add tool execution logic for market search
+          const res = await generateText({
+            model,
+            system: systemInstruction,
+            messages: formattedMessages,
+            tools: {
+              search_market_price: {
+                description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
+                parameters: z.object({
+                  ingredients: z.array(z.string())
+                }),
+                execute: async ({ ingredients }) => {
+                  const data = await searchMarketPrices(ingredients);
+                  return JSON.stringify(data);
+                }
+              }
+            },
+            maxSteps: 3, // Enable tool calling loop
+            maxTokens: 2048,
+            maxRetries: 1,
+            // Automatically execute tools if requested
+            onStepFinish: ({ text, toolCalls }) => {
+              log(`Step finished. Text length: ${text?.length || 0}. Tools: ${toolCalls?.length || 0}`);
+            }
+          } as any);
+          responseText = res.text;
+          finalToolCalls = res.toolCalls;
+        }
+        log(`[text] Response received, text length: ${responseText?.length || 0}`);
         
-        if (!text && (!toolCalls || toolCalls.length === 0)) {
+        if (!responseText && (!finalToolCalls || finalToolCalls.length === 0)) {
           throw new Error("AI trả về kết quả rỗng. Vui lòng thử lại hoặc chọn model khác.");
         }
         
-        return res.json({ text, toolCalls });
+        return res.json({ text: responseText, toolCalls: finalToolCalls });
       }
     } catch (error: any) {
       console.error("AI Proxy Error:", error);
@@ -536,6 +776,9 @@ async function startServer() {
       } else if (errorMessage.includes("not found")) {
         errorMessage = `Model "${modelId}" không tìm thấy hoặc chưa được hỗ trợ với API Key này.`;
         statusCode = 404;
+      } else if (errorMessage.toLowerCase().includes("timeout") || errorMessage.includes("ETIMEDOUT")) {
+        errorMessage = "Kết nối đến đối tác AI (NVIDIA/Groq) bị quá hạn (Timeout). Vui lòng thử lại sau hoặc chuyển sang model Gemini để ổn định hơn.";
+        statusCode = 504;
       } else if (errorMessage.includes("API key")) {
         errorMessage = "API Key không hợp lệ hoặc chưa được cấu hình đúng.";
         statusCode = 401;

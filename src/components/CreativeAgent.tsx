@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { LocalDb } from '../lib/localDb';
 import { creativeAgentInstruction } from '../lib/gemini';
 import { chatWithAIWithFallback, AVAILABLE_MODELS } from '../lib/ai';
 import { z } from 'zod';
@@ -7,11 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, Palette, Sparkles, User, Loader2, X, 
   AlertCircle, MessageSquare, Plus, Trash2, 
-  Search, Menu, Settings, Zap, Cpu, ChevronDown, Image, Video, Paperclip, FileText, Film
+  Search, Menu, Settings, Zap, Cpu, ChevronDown, Image, Video, Paperclip, FileText, Film, Bot, History,
+  CheckCircle2, Utensils, ChefHat, Save
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
+import { db, collection, auth, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, getDocs } from '../lib/firebase';
 
 interface ChatMessageData {
   id: string;
@@ -22,6 +23,7 @@ interface ChatMessageData {
   suggestions?: { label: string; action: string }[];
   photos?: { url: string; filename: string }[];
   internalMonologue?: string;
+  recipe?: any;
 }
 
 interface ConversationData {
@@ -61,151 +63,244 @@ export function CreativeAgent({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMonologue, setShowMonologue] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [creationHistory, setCreationHistory] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load conversations
   useEffect(() => {
-    const loadConversations = async () => {
-      const saved = await LocalDb.getCollection('creative_conversations');
-      const sorted = saved.sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      setConversations(sorted);
-      
-      // Auto-select most recent if nothing selected but history exists
-      if (!activeConversationId && sorted.length > 0) {
-        setActiveConversationId(sorted[0].id);
-      }
-    };
-    loadConversations();
-  }, []);
+    if (!auth.currentUser) return;
+
+    const q = query(
+      collection(db, 'creative_conversations'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('updatedAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const convs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ConversationData[];
+      setConversations(convs);
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
+
+  // Load creation history
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const q = query(
+      collection(db, 'creation_history'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const history = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCreationHistory(history);
+    });
+
+    return () => unsubscribe();
+  }, [auth.currentUser]);
 
   // Load messages for active conversation
   useEffect(() => {
-    const loadMessages = async () => {
-      if (!activeConversationId) {
-        setMessages([]);
-        return;
-      }
-      const allMessages = await LocalDb.getCollection('creative_chats');
-      const filtered = allMessages
-        .filter((m: any) => m.conversationId === activeConversationId)
-        .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      
-      if (filtered.length === 0) {
-        const welcomeMsg: ChatMessageData = {
-          id: 'welcome-' + activeConversationId,
-          conversationId: activeConversationId,
-          text: 'Chào bạn! Tôi là GemAgent - Chuyên gia Sáng tạo F&B. Tôi có thể giúp bạn thiết kế Menu Izakaya, tư vấn Food Styling Nhật Bản hoặc lên kế hoạch Content Social Media. Bạn cần tôi hỗ trợ mảng nào hôm nay?',
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-          suggestions: [
-            { label: 'Thiết kế Menu Izakaya', action: 'menu_design' },
-            { label: 'Tư vấn Food Styling', action: 'food_styling' },
-            { label: 'Lịch Content Social', action: 'content_calendar' }
-          ]
+    if (!activeConversationId || !auth.currentUser) {
+      setMessages([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'creative_chats'),
+      where('conversationId', '==', activeConversationId),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          // Handle Firestore Timestamp
+          timestamp: data.timestamp?.toDate ? data.timestamp.toDate().toISOString() : data.timestamp
         };
-        setMessages([welcomeMsg]);
-        await LocalDb.addDoc('creative_chats', welcomeMsg);
-      } else {
-        setMessages(filtered);
-      }
-      localStorage.setItem('last_creative_conv_id', activeConversationId);
-    };
-    loadMessages();
-  }, [activeConversationId]);
+      }) as ChatMessageData[];
+
+      // Always prepend welcome message if it's a new conversation or if it's not and we want it there
+      const welcomeMsg: ChatMessageData = {
+        id: 'welcome-' + activeConversationId,
+        conversationId: activeConversationId,
+        text: 'Chào bạn! Tôi là GemAgent - Chuyên gia Sáng tạo F&B. Tôi có thể giúp bạn thiết kế Menu Izakaya, tư vấn Food Styling Nhật Bản hoặc lên kế hoạch Content Social Media. Bạn cần tôi hỗ trợ mảng nào hôm nay?',
+        sender: 'ai',
+        timestamp: new Date(0).toISOString(), // Make it earliest
+        suggestions: [
+          { label: 'Thiết kế Menu Izakaya', action: 'menu_design' },
+          { label: 'Tư vấn Food Styling', action: 'food_styling' },
+          { label: 'Lịch Content Social', action: 'content_calendar' }
+        ]
+      };
+
+      setMessages([welcomeMsg, ...msgs]);
+    });
+
+    return () => unsubscribe();
+  }, [activeConversationId, auth.currentUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const startNewChat = async () => {
-    const newConv: ConversationData = {
-      id: Date.now().toString(),
-      title: 'Cuộc hội thoại mới',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    await LocalDb.addDoc('creative_conversations', newConv);
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConversationId(newConv.id);
+    if (!auth.currentUser) return;
+    
+    try {
+      const newConv = {
+        title: 'Cuộc hội thoại mới',
+        userId: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      const docRef = await addDoc(collection(db, 'creative_conversations'), newConv);
+      setActiveConversationId(docRef.id);
+    } catch (err) {
+      console.error("Error starting new chat:", err);
+    }
   };
 
   const deleteConversation = async (id: string) => {
-    if (id === 'all') {
-      await LocalDb.saveCollection('creative_conversations', []);
-      await LocalDb.saveCollection('creative_chats', []);
-      setConversations([]);
-      setMessages([]);
-      setActiveConversationId(null);
-      localStorage.removeItem('last_creative_conv_id');
-      setShowDeleteConfirm(null);
-      return;
-    }
-    await LocalDb.deleteDoc('creative_conversations', id);
-    const allMessages = await LocalDb.getCollection('creative_chats');
-    const remainingMessages = allMessages.filter((m: any) => m.conversationId !== id);
-    await LocalDb.saveCollection('creative_chats', remainingMessages);
+    if (!auth.currentUser) return;
     
-    setConversations(prev => prev.filter(c => c.id !== id));
-    if (activeConversationId === id) {
-      setActiveConversationId(null);
-      localStorage.removeItem('last_creative_conv_id');
+    try {
+      if (id === 'all') {
+        const batch = writeBatch(db);
+        
+        // Delete all conversations
+        const convSnap = await getDocs(query(collection(db, 'creative_conversations'), where('userId', '==', auth.currentUser.uid)));
+        convSnap.forEach(d => batch.delete(d.ref));
+        
+        // Delete all messages
+        const chatSnap = await getDocs(query(collection(db, 'creative_chats'), where('userId', '==', auth.currentUser.uid)));
+        chatSnap.forEach(d => batch.delete(d.ref));
+        
+        await batch.commit();
+        setActiveConversationId(null);
+      } else {
+        await deleteDoc(doc(db, 'creative_conversations', id));
+        // Also delete associated messages
+        const batch = writeBatch(db);
+        const chatSnap = await getDocs(query(collection(db, 'creative_chats'), where('conversationId', '==', id)));
+        chatSnap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+
+        if (activeConversationId === id) {
+          setActiveConversationId(null);
+        }
+      }
+    } catch (err) {
+      console.error("Error deleting conversation:", err);
     }
     setShowDeleteConfirm(null);
   };
 
+  const handleDeleteFromHistory = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'creation_history', id));
+    } catch (err) {
+      console.error("Error deleting history:", err);
+    }
+  };
+
+  const handleClearAllHistory = async () => {
+    if (!auth.currentUser || !confirm('Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)')) return;
+    try {
+      const q = query(
+        collection(db, 'creation_history'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (err) {
+      console.error("Error clearing history:", err);
+    }
+  };
+
+  const handleSelectFromHistory = (h: any) => {
+    // Setting up a new chat session with the selected recipe context
+    const recipe = h.recipe;
+    const msg: ChatMessageData = {
+      id: Date.now().toString(),
+      conversationId: activeConversationId || 'temp',
+      text: `Tôi đang xem lại công thức: **${recipe.title}**. Bạn có thể góp ý thêm cho tôi không?`,
+      sender: 'user',
+      timestamp: new Date().toISOString(),
+      recipe: recipe
+    };
+    setMessages(prev => [...prev, msg]);
+    // Note: In session-only mode it wouldn't persist, but now it will if handleSend is called properly or we just display it.
+    // For now, let's just push it to the messages state if there's an active conversation.
+  };
+
   const handleSend = async (text: string = input) => {
-    if (!text.trim() || isProcessing) return;
+    if (!text.trim() || isProcessing || !auth.currentUser) return;
 
     let currentConvId = activeConversationId;
     if (!currentConvId) {
-      const newConv: ConversationData = {
-        id: Date.now().toString(),
-        title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      await LocalDb.addDoc('creative_conversations', newConv);
-      setConversations(prev => [newConv, ...prev]);
-      setActiveConversationId(newConv.id);
-      currentConvId = newConv.id;
+      try {
+        const newConv = {
+          title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
+          userId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, 'creative_conversations'), newConv);
+        currentConvId = docRef.id;
+        setActiveConversationId(currentConvId);
+      } catch (err) {
+        console.error("Error creating conversation:", err);
+        return;
+      }
     } else {
-      // Update conversation title if it's still "Cuộc hội thoại mới"
+      // Update conversation updatedAt and potentially title
       const conv = conversations.find(c => c.id === currentConvId);
+      const updates: any = { updatedAt: serverTimestamp() };
       if (conv?.title === 'Cuộc hội thoại mới') {
-        const updatedConv = { ...conv, title: text.slice(0, 30) + (text.length > 30 ? '...' : ''), updatedAt: new Date().toISOString() };
-        await LocalDb.updateDoc('creative_conversations', currentConvId, updatedConv);
-        setConversations(prev => prev.map(c => c.id === currentConvId ? updatedConv : c));
-      } else {
-        // Just update updatedAt
-        await LocalDb.updateDoc('creative_conversations', currentConvId, { updatedAt: new Date().toISOString() });
-        setConversations(prev => prev.map(c => c.id === currentConvId ? { ...c, updatedAt: new Date().toISOString() } : c));
+        updates.title = text.slice(0, 30) + (text.length > 30 ? '...' : '');
+      }
+      try {
+        await updateDoc(doc(db, 'creative_conversations', currentConvId), updates);
+      } catch (err) {
+        console.error("Error updating conversation:", err);
       }
     }
 
-    const userMsg: ChatMessageData = {
-      id: Date.now().toString(),
+    const userMsg = {
       conversationId: currentConvId,
       text,
       sender: 'user',
-      timestamp: new Date().toISOString()
+      userId: auth.currentUser.uid,
+      timestamp: serverTimestamp(),
+      attachments: attachments.length > 0 ? attachments : null
     };
 
-    if (attachments.length > 0) {
-      (userMsg as any).attachments = attachments;
-    }
-
-    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setAttachments([]);
     setIsProcessing(true);
     setError(null);
-    await LocalDb.addDoc('creative_chats', userMsg);
 
     try {
-      const history = messages.concat(userMsg).map(m => {
+      await addDoc(collection(db, 'creative_chats'), userMsg);
+
+      const history = messages.map(m => {
         const parts: any[] = [{ text: m.text }];
-        
         const mAttachments = (m as any).attachments || [];
         mAttachments.forEach((att: Attachment) => {
           parts.push({
@@ -221,12 +316,25 @@ export function CreativeAgent({
         };
       });
 
+      // Add the current message to history
+      const currentParts: any[] = [{ text }];
+      attachments.forEach(att => {
+        currentParts.push({
+          [att.type]: att.data,
+          type: att.type,
+          mimeType: att.mimeType
+        });
+      });
+      history.push({ role: 'user', parts: currentParts });
+
       // Define fallback chain
       const fallbacks = [
         'gemini-2.0-flash',
         'gemini-1.5-pro',
         'gpt-4o-mini',
-        'groq/llama-3.3-70b-versatile'
+        'groq/llama-3.3-70b-versatile',
+        'openrouter/meta-llama/llama-3.3-70b-instruct:free',
+        'nvidia/meta/llama-3.3-70b-instruct'
       ].filter(id => id !== preferences.selectedModelId);
 
       const aiResult = await chatWithAIWithFallback(
@@ -244,41 +352,50 @@ export function CreativeAgent({
         fallbacks,
         z.object({
           text: z.string(),
-          suggestions: z.array(z.object({ label: z.string(), action: z.string() })).optional()
+          suggestions: z.array(z.object({ label: z.string(), action: z.string() })).optional(),
+          recipe: z.optional(z.any())
         })
       );
       
-      const aiMsg: ChatMessageData = {
-        id: (Date.now() + 1).toString(),
+      const aiMsg = {
         conversationId: currentConvId,
         text: aiResult.text || 'Xin lỗi, tôi gặp chút trục trặc. Bạn thử lại nhé!',
         sender: 'ai',
-        timestamp: new Date().toISOString(),
-        suggestions: aiResult.suggestions,
-        photos: (aiResult as any).photos,
-        internalMonologue: (aiResult as any).internalMonologue
+        userId: auth.currentUser.uid,
+        timestamp: serverTimestamp(),
+        suggestions: aiResult.suggestions || null,
+        recipe: aiResult.recipe || null,
+        internalMonologue: (aiResult as any).internalMonologue || null
       };
 
-      setMessages(prev => [...prev, aiMsg]);
-      await LocalDb.addDoc('creative_chats', aiMsg);
+      await addDoc(collection(db, 'creative_chats'), aiMsg);
+
+      if (aiResult.recipe && auth.currentUser) {
+        // Automatically save to creation_history per user request
+        await addDoc(collection(db, 'creation_history'), {
+          recipe: aiResult.recipe,
+          userId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          source: 'creative_agent'
+        });
+      }
     } catch (error: any) {
       console.error("Creative Agent Error:", error);
       let errorMsg = error.message || "Đã xảy ra lỗi khi kết nối với AI.";
       setError(errorMsg);
       
-      const aiMsg: ChatMessageData = {
-        id: (Date.now() + 1).toString(),
+      const errAiMsg = {
         conversationId: currentConvId,
         text: "⚠️ **Lỗi kết nối:** " + errorMsg,
         sender: 'ai',
-        timestamp: new Date().toISOString(),
+        userId: auth.currentUser.uid,
+        timestamp: serverTimestamp(),
         suggestions: [
           { label: '🔄 Thử lại', action: 'retry' },
           { label: '💬 Sang Chef Chat', action: 'go_to_chat' }
         ]
       };
-      setMessages(prev => [...prev, aiMsg]);
-      await LocalDb.addDoc('creative_chats', aiMsg);
+      await addDoc(collection(db, 'creative_chats'), errAiMsg);
     } finally {
       setIsProcessing(false);
     }
@@ -355,58 +472,102 @@ export function CreativeAgent({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-3 space-y-1 no-scrollbar">
-              {filteredConversations.map((conv) => (
-                <div key={conv.id} className="group relative">
-                  <button
-                    onClick={() => setActiveConversationId(conv.id)}
-                    className={cn(
-                      "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
-                      activeConversationId === conv.id 
-                        ? "bg-white shadow-sm border border-stone-100" 
-                        : "hover:bg-stone-100/50"
-                    )}
-                  >
-                    <MessageSquare className={cn(
-                      "w-4 h-4 shrink-0",
-                      activeConversationId === conv.id ? "text-stone-900" : "text-stone-400"
-                    )} />
-                    <div className="flex-1 min-w-0">
-                      <p className={cn(
-                        "text-xs font-bold truncate",
-                        activeConversationId === conv.id ? "text-stone-900" : "text-stone-600"
-                      )}>
-                        {conv.title}
-                      </p>
-                      <p className="text-[9px] text-stone-400 font-medium">
-                        {new Date(conv.updatedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowDeleteConfirm(conv.id);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 text-red-400/50 hover:text-red-500 transition-all z-10"
-                    title="Xoá cuộc hội thoại"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                    <div className="flex-1 overflow-y-auto px-3 space-y-4 no-scrollbar">
+              <div className="space-y-1">
+                <p className="px-3 text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-2">Hội thoại</p>
+                {filteredConversations.map((conv) => (
+                  <div key={conv.id} className="group relative">
+                    <button
+                      onClick={() => setActiveConversationId(conv.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
+                        activeConversationId === conv.id 
+                          ? "bg-white shadow-sm border border-stone-100" 
+                          : "hover:bg-stone-100/50"
+                      )}
+                    >
+                      <MessageSquare className={cn(
+                        "w-4 h-4 shrink-0",
+                        activeConversationId === conv.id ? "text-stone-900" : "text-stone-400"
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-xs font-bold truncate",
+                          activeConversationId === conv.id ? "text-stone-900" : "text-stone-600"
+                        )}>
+                          {conv.title}
+                        </p>
+                        <p className="text-[9px] text-stone-400 font-medium">
+                          {conv.updatedAt?.toDate ? conv.updatedAt.toDate().toLocaleDateString() : new Date(conv.updatedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(conv.id);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 text-red-400/50 hover:text-red-500 transition-all z-10"
+                      title="Xoá cuộc hội thoại"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {creationHistory.length > 0 && (
+                <div className="space-y-1 pt-2">
+                  <div className="px-3 flex items-center justify-between mb-2">
+                    <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
+                      <History className="w-3 h-3" />
+                      Bản thảo sáng tạo
+                    </p>
+                    <button 
+                      onClick={handleClearAllHistory}
+                      className="text-[9px] font-bold text-red-400 hover:text-red-600 transition-colors flex items-center gap-1 group/clear"
+                      title="Xoá tất cả bản thảo"
+                    >
+                      <Trash2 className="w-3 h-3 group-hover/clear:scale-110 transition-transform" />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {creationHistory.map((h, i) => (
+                      <div key={h.id || i} className="group relative px-3">
+                        <button
+                          onClick={() => handleSelectFromHistory(h)}
+                          className="w-full flex flex-col gap-1 p-3 rounded-xl bg-orange-50/50 border border-orange-100/50 hover:bg-orange-50 hover:border-orange-200 transition-all text-left"
+                        >
+                          <p className="text-[11px] font-bold text-stone-900 line-clamp-1">{h.recipe.title}</p>
+                          <p className="text-[9px] text-orange-600 font-bold uppercase tracking-widest">
+                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe.totalCost || 0)}
+                          </p>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Bạn có chắc chắn muốn xoá bản thảo này?')) {
+                              handleDeleteFromHistory(h.id);
+                            }
+                          }}
+                          className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-stone-300 hover:text-red-500 transition-all hover:scale-110 active:scale-95 sm:opacity-0 sm:group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="p-4 border-t border-stone-100">
-              <div className="bg-white rounded-2xl p-4 border border-stone-100 space-y-3">
-                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-stone-400">
-                  <Settings className="w-3 h-3" />
-                  Cấu hình AI
-                </div>
+              <div className="flex items-center gap-2 bg-stone-50 rounded-xl p-3 border border-stone-100 hover:border-stone-400 group transition-all">
+                <Bot className="w-4 h-4 text-stone-400 group-hover:text-stone-900" />
                 <select
                   value={preferences.selectedModelId}
                   onChange={(e) => updatePreference('selectedModelId', e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-100 rounded-xl p-2.5 text-[10px] font-bold text-stone-600 focus:outline-none focus:border-stone-900"
+                  className="w-full bg-transparent text-[10px] font-bold text-stone-500 group-hover:text-stone-900 uppercase tracking-widest focus:outline-none appearance-none"
                 >
                   {AVAILABLE_MODELS.map(m => (
                     <option key={m.id} value={m.id}>{m.name}</option>
@@ -444,12 +605,12 @@ export function CreativeAgent({
                 className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Xoá Chat</span>
+                <span className="hidden sm:inline">Xoá</span>
               </button>
             )}
-            <div className="hidden md:flex flex-col items-end">
-              <span className="text-[9px] font-bold text-stone-400 uppercase tracking-widest">Model Hiện Tại</span>
-              <span className="text-[10px] font-bold text-stone-900">{AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name}</span>
+            <div className="hidden md:flex items-center gap-2 bg-stone-50 px-3 py-2 rounded-xl border border-stone-100">
+              <Bot className="w-3.5 h-3.5 text-stone-400" />
+              <span className="text-[10px] font-bold text-stone-600 truncate max-w-[120px]">{AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name}</span>
             </div>
             <div className="w-10 h-10 bg-stone-900 rounded-xl flex items-center justify-center shadow-lg shadow-stone-200">
               <Palette className="w-5 h-5 text-white" />
@@ -508,6 +669,65 @@ export function CreativeAgent({
                       <ReactMarkdown>{typeof msg.text === 'string' ? msg.text : String(msg.text || '')}</ReactMarkdown>
                     </div>
                   </div>
+
+                  {msg.recipe && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="w-full bg-white border border-stone-100 rounded-[2rem] overflow-hidden shadow-sm mt-2"
+                    >
+                      <div className="bg-stone-900 px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ChefHat className="w-5 h-5 text-stone-400" />
+                          <h3 className="text-white font-display font-bold text-sm tracking-tight">{msg.recipe.title}</h3>
+                        </div>
+                        <CheckCircle2 className="w-5 h-5 text-green-400" />
+                      </div>
+                      <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Food Cost</p>
+                            <p className="text-lg font-display font-bold text-stone-900">
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(msg.recipe.totalCost || 0)}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Giá đề xuất</p>
+                            <p className="text-lg font-display font-bold text-stone-900 text-green-600">
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(msg.recipe.recommendedPrice || 0)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-2 pt-4 border-t border-stone-50">
+                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Nguyên liệu chính</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.recipe.ingredients?.slice(0, 5).map((ing: any, idx: number) => (
+                              <span key={idx} className="bg-stone-50 px-2 py-1 rounded-lg text-[10px] text-stone-600 border border-stone-100 italic">
+                                {ing.name} ({ing.amount} {ing.unit})
+                              </span>
+                            ))}
+                            {(msg.recipe.ingredients?.length || 0) > 5 && (
+                              <span className="text-[10px] text-stone-400 font-bold px-2 py-1 italic">
+                                +{(msg.recipe.ingredients?.length || 0) - 5} nữa
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setActiveTab('generator');
+                              // In a real app, we'd pass this recipe to the generator state
+                            }}
+                            className="w-full py-3 bg-stone-50 border border-stone-100 rounded-xl text-[10px] font-bold text-stone-600 uppercase tracking-widest hover:bg-stone-900 hover:text-white hover:border-stone-900 transition-all flex items-center justify-center gap-2"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Mở chỉnh sửa
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
 
                   {(msg as any).attachments && (msg as any).attachments.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Camera, DollarSign, ShoppingBag, ChefHat, ChevronRight, Calendar } from 'lucide-react';
+import { Search, Plus, Camera, DollarSign, ShoppingBag, ChefHat, ChevronRight, Calendar, Bot, LayoutDashboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateRecipe, analyzeMenuImage } from '../lib/gemini';
 import { generateProactiveInsights, AVAILABLE_MODELS } from '../lib/ai';
@@ -188,32 +188,37 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
           </motion.div>
         )}
       </AnimatePresence>
-      <header className="flex justify-between items-end px-2">
-        <div className="space-y-1">
-          <p className="text-neutral-400 text-[10px] font-medium uppercase tracking-[0.2em]">SousChef AI</p>
-          <h1 className="text-4xl font-semibold text-neutral-900 tracking-tight">Xin chào, Chef</h1>
+      <header className="flex justify-between items-center px-2">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-stone-900 rounded-xl flex items-center justify-center text-white shadow-lg shadow-stone-200">
+            <LayoutDashboard className="w-5 h-5" />
+          </div>
+          <div className="space-y-0">
+            <h1 className="text-xl font-bold text-neutral-900 tracking-tight">Dashboard</h1>
+            <p className="text-neutral-400 text-[9px] font-bold uppercase tracking-[0.2em]">Hệ thống Quản trị Bếp</p>
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className="w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center hover:bg-neutral-100 transition-all active:scale-95"
-          >
-            <Logo size={28} variant="stone" />
-          </button>
-          <div className="flex flex-col items-end gap-0.5">
-            <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">Model</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 bg-stone-50 px-2 py-1.5 rounded-xl border border-stone-100 transition-all hover:border-stone-400 group">
+            <Bot className="w-3.5 h-3.5 text-stone-400 group-hover:text-stone-900 transition-colors" />
             <select
               value={preferences?.selectedModelId}
               onChange={(e) => updatePreference?.('selectedModelId', e.target.value)}
-              className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[9px] appearance-none hover:text-orange-700 transition-colors text-right"
+              className="bg-transparent border-none p-0 font-bold text-stone-500 group-hover:text-stone-900 uppercase tracking-widest cursor-pointer focus:ring-0 text-[8px] sm:text-[9px] max-w-[60px] sm:max-w-none appearance-none transition-colors"
             >
               {AVAILABLE_MODELS.map(m => (
-                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase font-sans">
                   {m.name}
                 </option>
               ))}
             </select>
           </div>
+          <button 
+            onClick={() => setActiveTab('profile')}
+            className="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center hover:bg-stone-100 transition-all active:scale-95 border border-stone-100"
+          >
+            <Logo size={20} variant="stone" />
+          </button>
         </div>
       </header>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Save, DollarSign, ListChecks, ChefHat, Sparkles, Edit2, Trash2, Plus, Minus, AlertCircle, Share2, Copy, Check as CheckIcon } from 'lucide-react';
+import { X, Save, DollarSign, ListChecks, ChefHat, Sparkles, Edit2, Trash2, Plus, Minus, AlertCircle, Share2, Copy, Check as CheckIcon, TrendingUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { db, doc, updateDoc, deleteDoc, handleFirestoreError, OperationType } from '../lib/firebase';
 import { cn, validateRecipe } from '../lib/utils';
@@ -16,7 +16,10 @@ interface RecipeDetailProps {
 export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: RecipeDetailProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [editedRecipe, setEditedRecipe] = useState({ ...recipe });
+  const [editedRecipe, setEditedRecipe] = useState({ 
+    ...recipe, 
+    version: recipe.version || 1.0 
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [showShareTooltip, setShowShareTooltip] = useState(false);
 
@@ -112,6 +115,10 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
     });
   };
 
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 100 }}
@@ -126,9 +133,16 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
               <X className="w-5 h-5" />
             </button>
             <div className="space-y-0.5">
-              <h1 className="text-2xl font-display font-bold text-stone-900 tracking-tight truncate max-w-[200px]">
-                {isEditing ? 'Chỉnh sửa' : recipe.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-display font-bold text-stone-900 tracking-tight truncate max-w-[200px]">
+                  {isEditing ? 'Chỉnh sửa' : recipe.title}
+                </h1>
+                {!isEditing && (
+                  <span className="px-2 py-0.5 bg-stone-100 text-stone-500 rounded text-[10px] font-bold">
+                    v{(recipe.version || 1.0).toFixed(1)}
+                  </span>
+                )}
+              </div>
               <p className="text-stone-400 text-[10px] font-bold uppercase tracking-[0.2em]">
                 {isEditing ? 'Recipe Editor' : 'Chi tiết công thức'}
               </p>
@@ -215,16 +229,38 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-10 no-scrollbar">
+        {recipe.image && !isEditing && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full aspect-video rounded-[2.5rem] overflow-hidden shadow-2xl shadow-stone-200 border border-stone-100"
+          >
+            <img src={recipe.image} alt={recipe.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </motion.div>
+        )}
+
         {isEditing ? (
           <div className="space-y-8 pb-12">
-            <div className="space-y-3">
-              <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 ml-1">Tiêu đề công thức</label>
-              <input
-                type="text"
-                value={editedRecipe.title}
-                onChange={(e) => setEditedRecipe({ ...editedRecipe, title: e.target.value })}
-                className="w-full bg-white border border-stone-100 rounded-2xl py-4 px-6 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-stone-900/5 transition-all shadow-sm"
-              />
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2 space-y-3">
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 ml-1">Tiêu đề công thức</label>
+                <input
+                  type="text"
+                  value={editedRecipe.title}
+                  onChange={(e) => setEditedRecipe({ ...editedRecipe, title: e.target.value })}
+                  className="w-full bg-white border border-stone-100 rounded-2xl py-4 px-6 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-stone-900/5 transition-all shadow-sm"
+                />
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400 ml-1">Phiên bản</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={editedRecipe.version}
+                  onChange={(e) => setEditedRecipe({ ...editedRecipe, version: parseFloat(e.target.value) || 1.0 })}
+                  className="w-full bg-white border border-stone-100 rounded-2xl py-4 px-6 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-stone-900/5 transition-all shadow-sm text-center"
+                />
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -322,21 +358,30 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
                 <div className="w-8 h-8 bg-orange-400/10 rounded-xl flex items-center justify-center">
                   <DollarSign className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold uppercase tracking-[0.2em] text-[10px]">Chi phí & Định giá</h3>
+                <h3 className="font-bold uppercase tracking-[0.2em] text-[10px]">Phân tích tài chính</h3>
               </div>
-              <div className="grid grid-cols-2 gap-8 relative z-10">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-8 relative z-10">
                 <div className="space-y-1.5">
-                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Tổng chi phí</p>
-                  <p className="text-3xl font-display font-bold">${recipe.totalCost?.toLocaleString()}</p>
+                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Food Cost</p>
+                  <p className="text-2xl font-display font-bold">{formatCurrency(recipe.totalCost || 0)}</p>
                 </div>
                 <div className="space-y-1.5">
-                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Giá đề xuất</p>
-                  <p className="text-3xl font-display font-bold text-orange-400">${recipe.recommendedPrice?.toLocaleString()}</p>
+                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Giá Niêm Yết</p>
+                  <p className="text-2xl font-display font-bold text-orange-400">{formatCurrency(recipe.recommendedPrice || 0)}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-stone-400 text-[10px] font-bold uppercase tracking-widest">Biên lợi nhuận</p>
+                  <p className={cn(
+                    "text-2xl font-display font-bold",
+                    ((recipe.recommendedPrice - recipe.totalCost) / recipe.recommendedPrice) > 0.6 ? "text-emerald-400" : "text-amber-400"
+                  )}>
+                    {(((recipe.recommendedPrice - recipe.totalCost) / recipe.recommendedPrice) * 100).toFixed(1)}%
+                  </p>
                 </div>
               </div>
               <div className="pt-6 border-t border-white/5 flex items-center justify-between">
-                <p className="text-stone-500 text-[10px] font-bold uppercase tracking-widest">SousChef Intelligence</p>
-                <Sparkles className="w-4 h-4 text-stone-700" />
+                <p className="text-stone-500 text-[10px] font-bold uppercase tracking-widest text-[#999]">Chef Intelligence Engine</p>
+                <TrendingUp className="w-4 h-4 text-stone-700" />
               </div>
             </section>
 
@@ -369,10 +414,10 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
                             <p className="text-stone-600 font-medium">{ing.amount} {ing.unit}</p>
                           </td>
                           <td className="p-5 text-right">
-                            <p className="text-stone-400 font-medium">${ing.purchasePrice?.toLocaleString()}</p>
+                            <p className="text-stone-400 font-medium">{formatCurrency(ing.purchasePrice || 0)}</p>
                           </td>
                           <td className="p-5 text-right">
-                            <p className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">${ing.costPerAmount?.toLocaleString()}</p>
+                            <p className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">{formatCurrency(ing.costPerAmount || 0)}</p>
                           </td>
                         </tr>
                       ))}
