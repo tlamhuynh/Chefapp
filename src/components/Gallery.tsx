@@ -3,6 +3,7 @@ import { db, collection, query, where, orderBy, onSnapshot, auth, deleteDoc, doc
 import { motion, AnimatePresence } from 'framer-motion';
 import { ImageIcon, Trash2, Download, ExternalLink, Search, Calendar, ChefHat } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { Logo } from './Logo';
 
 export function Gallery() {
   const [images, setImages] = useState<any[]>([]);
@@ -47,22 +48,25 @@ export function Gallery() {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8"
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-6"
     >
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-display font-bold text-neutral-900 tracking-tight">Bộ sưu tập món ăn</h2>
-          <p className="text-neutral-500 text-sm font-medium">Lưu giữ những nguồn cảm hứng ẩm thực của bạn</p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Logo />
+          <div className="space-y-0.5">
+            <h2 className="text-xl font-display font-bold text-neutral-900 tracking-tight">Bộ sưu tập</h2>
+            <p className="text-neutral-500 text-[10px] font-medium uppercase tracking-wider">Cảm hứng ẩm thực</p>
+          </div>
         </div>
 
-        <div className="relative group max-w-md w-full">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 group-focus-within:text-neutral-900 transition-colors" />
+        <div className="relative group max-w-sm w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 group-focus-within:text-neutral-900 transition-colors" />
           <input
             type="text"
-            placeholder="Tìm kiếm hình ảnh..."
+            placeholder="Tìm kiếm..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-white border border-neutral-100 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm"
+            className="w-full pl-9 pr-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-xs focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm"
           />
         </div>
       </div>

@@ -1,31 +1,120 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup as fbSignInWithPopup, signOut as fbSignOut, onAuthStateChanged as fbOnAuthStateChanged } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection as fbCollection, 
-  doc as fbDoc, 
-  addDoc as fbAddDoc, 
-  setDoc as fbSetDoc, 
-  updateDoc as fbUpdateDoc, 
-  deleteDoc as fbDeleteDoc, 
-  getDoc as fbGetDoc, 
-  getDocs as fbGetDocs, 
-  query as fbQuery, 
-  where as fbWhere, 
-  orderBy as fbOrderBy, 
-  limit as fbLimit, 
-  onSnapshot as fbOnSnapshot, 
-  serverTimestamp as fbServerTimestamp,
-  Timestamp as fbTimestamp,
-  writeBatch as fbWriteBatch
-} from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+// Local Storage Mock Adapter
+const LOCAL_DB_KEY = 'app_local_db';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const googleProvider = new GoogleAuthProvider();
+const getLocalDb = () => {
+  const db = localStorage.getItem(LOCAL_DB_KEY);
+  return db ? JSON.parse(db) : {};
+};
+
+const saveLocalDb = (db: any) => {
+  localStorage.setItem(LOCAL_DB_KEY, JSON.stringify(db));
+  // Trigger listeners if needed
+  Object.values(listeners).forEach((l: any) => l());
+};
+
+const listeners: { [key: string]: () => void } = {};
+
+export const auth = { currentUser: { uid: 'local-user', email: 'local@device.com' } };
+export const db = {};
+
+export const collection = (db: any, path: string) => path;
+export const doc = (db: any, path: string, id: string) => ({ id, path: `${path}/${id}`, ref: { id, path: `${path}/${id}` } });
+export const query = (...args: any[]) => args;
+export const where = (field: string, op: string, value: any) => ({ field, op, value });
+export const orderBy = (field: string, dir: string) => ({ field, dir });
+export const limit = (n: number) => n;
+
+export const addDoc = (path: string, data: any) => {
+  const db = getLocalDb();
+  if (!db[path]) db[path] = [];
+  const id = Date.now().toString();
+  db[path].push({ id, ...data });
+  saveLocalDb(db);
+  return { id };
+};
+
+export const setDoc = (ref: any, data: any) => {
+  const db = getLocalDb();
+  if (!db[ref.path.split('/')[0]]) db[ref.path.split('/')[0]] = [];
+  const collection = db[ref.path.split('/')[0]];
+  const index = collection.findIndex((d: any) => d.id === ref.id);
+  if (index > -1) collection[index] = { ...collection[index], ...data };
+  else collection.push({ id: ref.id, ...data });
+  saveLocalDb(db);
+};
+
+export const updateDoc = (ref: any, data: any) => {
+  const db = getLocalDb();
+  const collection = db[ref.path.split('/')[0]];
+  if (collection) {
+    const item = collection.find((d: any) => d.id === ref.id);
+    if (item) {
+      Object.assign(item, data);
+      saveLocalDb(db);
+    }
+  }
+};
+
+export const deleteDoc = (ref: any) => {
+  const db = getLocalDb();
+  const path = ref.path.split('/')[0];
+  if (db[path]) {
+    db[path] = db[path].filter((d: any) => d.id !== ref.id);
+    saveLocalDb(db);
+  }
+};
+
+export const getDoc = (ref: any) => {
+  const db = getLocalDb();
+  const collection = db[ref.path.split('/')[0]];
+  const data = collection ? collection.find((d: any) => d.id === ref.id) : null;
+  return { 
+    data: () => data, 
+    id: ref.id, 
+    exists: () => !!data 
+  };
+};
+
+export const getDocs = (q: any) => {
+  const db = getLocalDb();
+  const path = q[0];
+  const items = db[path] || [];
+  return { docs: items.map((data: any) => ({ id: data.id, data: () => data })) };
+};
+
+export const onSnapshot = (q: any, callback: (snapshot: any) => void) => {
+  const path = Array.isArray(q) ? q[0] : q;
+
+  const run = () => {
+    const db = getLocalDb();
+    const items = db[path] || [];
+    callback({ docs: items.map((data: any) => ({ id: data.id, data: () => data })) });
+  };
+  
+  run();
+  const id = path + Date.now();
+  listeners[id] = run;
+  return () => delete listeners[id];
+};
+
+export const serverTimestamp = () => new Date();
+export const Timestamp = { now: () => new Date(), fromDate: (d: Date) => d };
+export const writeBatch = (db: any) => ({
+  delete: (ref: any) => deleteDoc(ref),
+  commit: () => Promise.resolve()
+});
+
+export const getDocFromServer = getDoc;
+export const signInWithPopup = () => Promise.resolve();
+export const signOut = () => Promise.resolve();
+export const onAuthStateChanged = (auth: any, callback: (user: any) => void) => {
+  callback({ uid: 'local-user', email: 'local@device.com' });
+  return () => {};
+};
+
+export const googleProvider = {};
+
+export const testConnection = () => console.log("Connection test bypassed");
 
 export enum OperationType {
   CREATE = 'create',
@@ -36,48 +125,5 @@ export enum OperationType {
   WRITE = 'write',
 }
 
-export interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: any;
-}
-
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  console.error(`Firestore Error [${operationType}] at ${path}:`, error);
-}
-
-export async function testConnection() {
-  try {
-    const { doc, getDocFromServer } = await import('firebase/firestore');
-    await getDocFromServer(doc(db, '_connection_test', 'test'));
-    console.log("Firestore connection test: success (or at least connected to server)");
-  } catch (error) {
-    console.warn("Firestore connection test warning:", error);
-  }
-}
-
-// Firestore API Wrappers
-export const collection = (db: any, path: string) => fbCollection(db, path);
-export const doc = (db: any, path: string, id?: string) => id ? fbDoc(db, path, id) : fbDoc(fbCollection(db, path));
-export const query = fbQuery;
-export const where = fbWhere;
-export const orderBy = fbOrderBy;
-export const limit = fbLimit;
-export const addDoc = fbAddDoc;
-export const setDoc = fbSetDoc;
-export const updateDoc = fbUpdateDoc;
-export const deleteDoc = fbDeleteDoc;
-export const getDoc = fbGetDoc;
-export const getDocs = fbGetDocs;
-export const onSnapshot = fbOnSnapshot;
-export const serverTimestamp = fbServerTimestamp;
-export const Timestamp = fbTimestamp;
-export const writeBatch = fbWriteBatch;
-
-export const getDocFromServer = fbGetDoc;
-export const signInWithPopup = fbSignInWithPopup;
-export const signOut = fbSignOut;
-export const onAuthStateChanged = fbOnAuthStateChanged;
-
-export type User = import('firebase/auth').User;
+export const handleFirestoreError = (error: any, op: any, path: any) => console.error(error);
+export type User = any;
