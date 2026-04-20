@@ -34,7 +34,8 @@ export function Dashboard({ setActiveTab, preferences, updatePreference }: Dashb
       if (!auth.currentUser || recipes.length === 0) return;
       setIsLoadingInsights(true);
       try {
-        const inventorySnap = await getDocs(collection(db, 'inventory'));
+        const q = query(collection(db, 'inventory'), where('authorId', '==', auth.currentUser.uid));
+        const inventorySnap = await getDocs(q);
         const inventory = inventorySnap.docs.map(d => d.data());
         
         const aiConfig = preferences ? { 

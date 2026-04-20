@@ -171,7 +171,10 @@ function robustParseJson(jsonStr: string) {
   
   // Remove markdown code blocks if present
   if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
+    const lines = cleaned.split('\n');
+    if (lines[0].startsWith('```')) lines.shift();
+    if (lines[lines.length - 1].trim().startsWith('```')) lines.pop();
+    cleaned = lines.join('\n').trim();
   }
 
   // Attempt standard parse first
@@ -774,7 +777,14 @@ export async function chatWithAIWithFallback(
   for (const currentModelId of modelsToTry) {
     try {
       logger.info(`[chatWithAIWithFallback] Trying model: ${currentModelId}`);
-      return await chatWithAI(currentModelId, messages, systemInstruction, tools, config, responseSchema);
+      
+      // 45s Timeout wrapper
+      const aiCallPromise = chatWithAI(currentModelId, messages, systemInstruction, tools, config, responseSchema);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("AI Request Timeout - Quá thời gian phản hồi (45s)")), 45000);
+      });
+      
+      return await Promise.race([aiCallPromise, timeoutPromise]);
     } catch (error: any) {
       logger.warn(`[chatWithAIWithFallback] Error with ${currentModelId}: ${error.message}`);
       lastError = error;

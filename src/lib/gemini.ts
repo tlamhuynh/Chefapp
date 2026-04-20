@@ -120,9 +120,10 @@ export const recipeResponseSchema = z.object({
   })))
 });
 
-export async function generateRecipe(theme: string, config?: any, modelId: string = chefModel) {
+export async function generateRecipe(theme: string, config?: any, modelId: string = chefModel, imageBase64?: string, imageMimeType: string = "image/jpeg") {
   const promptText = `YÊU CẦU CỐT LÕI: Bạn phải tạo một công thức nấu ăn chính xác cho chủ đề hoặc dựa trên các nguyên liệu sau: "${theme}". 
   TUYỆT ĐỐI KHÔNG được gợi ý các món ăn khác không liên quan. Ví dụ: nếu người dùng yêu cầu "Bò né", không được trả về "Cá hồi".
+  ${imageBase64 ? "Hãy phân tích hình ảnh tôi cung cấp để xây dựng công thức nấu ăn phù hợp nhất liên quan đến hình ảnh này hoặc sử dụng hình ảnh này làm cảm hứng." : ""}
   
   YÊU CẦU ĐỊNH DẠNG (BẮT BUỘC):
   1. Trả về JSON hợp lệ với đầy đủ các trường yêu cầu.
@@ -131,15 +132,27 @@ export async function generateRecipe(theme: string, config?: any, modelId: strin
   4. Nội dung trong trường "text" phải sử dụng Markdown với các tiêu đề (Storytelling, Bí quyết, v.v.).
   5. Trả về hoàn toàn bằng tiếng Việt.`;
 
+  const parts: any[] = [{ text: promptText }];
+  if (imageBase64) {
+    parts.unshift({ inlineData: { data: base64ImageStripPadding(imageBase64), mimeType: imageMimeType } });
+  }
+
   return await chatWithAIWithFallback(
     modelId,
-    [{ role: 'user', parts: [{ text: promptText }] }],
+    [{ role: 'user', parts }],
     systemInstruction,
     undefined,
     config,
     defaultFallbacks.filter(id => id !== modelId),
     recipeResponseSchema
   );
+}
+
+function base64ImageStripPadding(base64str: string) {
+  if (base64str.includes(',')) {
+    return base64str.split(',')[1];
+  }
+  return base64str;
 }
 
 export async function refineRecipe(currentRecipe: any, feedback: string, history: ChatMessage[], config?: any, modelId: string = chefModel) {

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, Palette, Sparkles, User, Loader2, X, 
-  AlertCircle, MessageSquare, Plus, Trash2, 
+  AlertCircle, MessageSquare, Plus, Trash2, Edit2, 
   Search, Menu, Settings, Zap, Cpu, ChevronDown, Image, Video, Paperclip, FileText, Film, Bot, History,
   CheckCircle2, Utensils, ChefHat, Save
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
 import { db, collection, auth, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, getDocs } from '../lib/firebase';
+import { ConfirmModal } from './ConfirmModal';
 
 interface ChatMessageData {
   id: string;
@@ -57,6 +58,7 @@ export function CreativeAgent({
   const [conversations, setConversations] = useState<ConversationData[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, title: string, message?: string, onConfirm: () => void } | null>(null);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export function CreativeAgent({
     const q = query(
       collection(db, 'creative_chats'),
       where('conversationId', '==', activeConversationId),
+      where('userId', '==', auth.currentUser.uid),
       orderBy('timestamp', 'asc')
     );
 
@@ -174,6 +177,23 @@ export function CreativeAgent({
     }
   };
 
+  const renameConversation = async (id: string, currentTitle: string) => {
+    if (!auth.currentUser) return;
+    
+    const newTitle = prompt("Nhập tên mới cho cuộc hội thoại:", currentTitle);
+    
+    if (newTitle !== null && newTitle.trim() !== "" && newTitle !== currentTitle) {
+      try {
+        await updateDoc(doc(db, 'creative_conversations', id), {
+          title: newTitle.trim(),
+          updatedAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Error renaming conversation:", err);
+      }
+    }
+  };
+
   const deleteConversation = async (id: string) => {
     if (!auth.currentUser) return;
     
@@ -218,19 +238,27 @@ export function CreativeAgent({
   };
 
   const handleClearAllHistory = async () => {
-    if (!auth.currentUser || !confirm('Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)')) return;
-    try {
-      const q = query(
-        collection(db, 'creation_history'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const snap = await getDocs(q);
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (err) {
-      console.error("Error clearing history:", err);
-    }
+    if (!auth.currentUser) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      title: "Xóa tất cả bản thảo?",
+      message: "Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)",
+      onConfirm: async () => {
+        try {
+          const q = query(
+            collection(db, 'creation_history'),
+            where('userId', '==', auth.currentUser!.uid)
+          );
+          const snap = await getDocs(q);
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        } catch (err) {
+          console.error("Error clearing history:", err);
+        }
+      }
+    });
   };
 
   const handleSelectFromHistory = (h: any) => {
@@ -421,7 +449,16 @@ export function CreativeAgent({
   );
 
   return (
-    <div className="flex h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm">
+    <div className="flex h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm relative">
+      {confirmModal && (
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
       {/* Sidebar - Made absolute on mobile for better UX */}
       <AnimatePresence>
         {showHistory && (
@@ -502,16 +539,28 @@ export function CreativeAgent({
                         </p>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteConfirm(conv.id);
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 text-red-400/50 hover:text-red-500 transition-all z-10"
-                      title="Xoá cuộc hội thoại"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          renameConversation(conv.id, conv.title);
+                        }}
+                        className="p-1.5 text-stone-400 hover:text-stone-900 transition-all rounded-md hover:bg-white border border-transparent hover:border-stone-100 shadow-sm"
+                        title="Đổi tên cuộc hội thoại"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(conv.id);
+                        }}
+                        className="p-1.5 text-red-400/50 hover:text-red-500 transition-all rounded-md hover:bg-red-50 border border-transparent hover:border-red-100 shadow-sm"
+                        title="Xoá cuộc hội thoại"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -546,11 +595,13 @@ export function CreativeAgent({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm('Bạn có chắc chắn muốn xoá bản thảo này?')) {
-                              handleDeleteFromHistory(h.id);
-                            }
+                            setConfirmModal({
+                              isOpen: true,
+                              title: "Xóa bản thảo này?",
+                              onConfirm: () => handleDeleteFromHistory(h.id)
+                            });
                           }}
-                          className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-stone-300 hover:text-red-500 transition-all hover:scale-110 active:scale-95 sm:opacity-0 sm:group-hover:opacity-100"
+                          className="absolute right-5 top-1/2 -translate-y-1/2 p-2 text-stone-300 hover:text-red-500 transition-all hover:scale-110 active:scale-95 z-10 sm:opacity-0 sm:group-hover:opacity-100"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

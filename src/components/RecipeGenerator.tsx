@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package, Bot, Send, MessageSquare, History, Trash2 } from 'lucide-react';
+import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package, Bot, Send, MessageSquare, History, Trash2, RefreshCw, Image as ImageIcon, Upload } from 'lucide-react';
 import { generateRecipe, refineRecipe, ChatMessage } from '../lib/gemini';
 import { AVAILABLE_MODELS } from '../lib/ai';
 import { db, collection, addDoc, serverTimestamp, auth, getDocs, onSnapshot, query, where, orderBy, deleteDoc, doc, writeBatch } from '../lib/firebase';
 import { validateRecipe, cn } from '../lib/utils';
 import ReactMarkdown from 'react-markdown';
+import { ConfirmModal } from './ConfirmModal';
 
 interface RecipeGeneratorProps {
   preferences: any;
@@ -20,6 +21,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
   const [ingredientInput, setIngredientInput] = useState('');
   const [ingredients, setIngredients] = useState<string[]>(persistedState?.ingredients || []);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>(persistedState?.difficulty || 'medium');
+  const [sourceImage, setSourceImage] = useState<string | null>(persistedState?.sourceImage || null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedRecipe, setGeneratedRecipe] = useState<any>(persistedState?.generatedRecipe || null);
   const [isSaving, setIsSaving] = useState(false);
@@ -36,11 +38,15 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>(persistedState?.chatHistory || []);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Custom Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, title: string, message?: string, onConfirm: () => void } | null>(null);
+
   // Persistence logic: Sync local state to App state on unmount
   const stateRef = useRef({
     theme,
     ingredients,
     difficulty,
+    sourceImage,
     generatedRecipe,
     chatHistory,
     monologue
@@ -51,11 +57,12 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
       theme,
       ingredients,
       difficulty,
+      sourceImage,
       generatedRecipe,
       chatHistory,
       monologue
     };
-  }, [theme, ingredients, difficulty, generatedRecipe, chatHistory, monologue]);
+  }, [theme, ingredients, difficulty, sourceImage, generatedRecipe, chatHistory, monologue]);
 
   useEffect(() => {
     return () => {
@@ -92,9 +99,11 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
   }, [chatHistory]);
 
   const fetchFromInventory = async () => {
+    if (!auth.currentUser) return;
     setIsFetchingInventory(true);
     try {
-      const snap = await getDocs(collection(db, 'inventory'));
+      const q = query(collection(db, 'inventory'), where('authorId', '==', auth.currentUser.uid));
+      const snap = await getDocs(q);
       const items = snap.docs
         .map(d => d.data())
         .filter(item => item.currentStock > 0)
@@ -114,14 +123,85 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
   };
 
   const addIngredient = () => {
-    if (ingredientInput.trim() && !ingredients.includes(ingredientInput.trim())) {
-      setIngredients([...ingredients, ingredientInput.trim()]);
-      setIngredientInput('');
+    const input = ingredientInput.trim();
+    if (input) {
+      const isDuplicate = ingredients.some(ing => ing.toLowerCase() === input.toLowerCase());
+      if (!isDuplicate) {
+        setIngredients([...ingredients, input]);
+        setIngredientInput('');
+      } else {
+        setIngredientInput(''); // Clear input if duplicate
+      }
     }
   };
 
   const removeIngredient = (ing: string) => {
     setIngredients(ingredients.filter(i => i !== ing));
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert("Vui lòng tải lên tệp hình ảnh hợp lệ (JPG, PNG).");
+      return;
+    }
+    
+    // Scale down image to avoid overloading limits
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIMENSION = 1200;
+        
+        if (width > height && width > MAX_DIMENSION) {
+          height *= MAX_DIMENSION / width;
+          width = MAX_DIMENSION;
+        } else if (height > MAX_DIMENSION) {
+          width *= MAX_DIMENSION / height;
+          height = MAX_DIMENSION;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          setSourceImage(canvas.toDataURL('image/jpeg', 0.8));
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLButtonElement | HTMLDivElement>) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement | HTMLDivElement>) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setSourceImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleDeleteFromHistory = async (id: string) => {
@@ -140,23 +220,50 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
   };
 
   const handleClearAllHistory = async () => {
-    if (!auth.currentUser || !confirm('Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)')) return;
-    try {
-      const q = query(
-        collection(db, 'creation_history'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const snap = await getDocs(q);
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (err) {
-      console.error("Error clearing history:", err);
+    if (!auth.currentUser) return;
+    
+    setConfirmModal({
+      isOpen: true,
+      title: "Xóa tất cả bản thảo?",
+      message: "Bạn có chắc chắn muốn xoá tất cả bản thảo sáng tạo không? (Hành động này không thể hoàn tác)",
+      onConfirm: async () => {
+        try {
+          const q = query(
+            collection(db, 'creation_history'),
+            where('userId', '==', auth.currentUser!.uid)
+          );
+          const snap = await getDocs(q);
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        } catch (err) {
+          console.error("Error clearing history:", err);
+        }
+      }
+    });
+  };
+
+  const handleRetryGeneration = () => {
+    if (generatedRecipe) {
+      const retryTheme = theme || generatedRecipe.recipe?.title || '';
+      const retryIngredients = ingredients.length > 0 ? ingredients : (generatedRecipe.recipe?.ingredients?.map((i: any) => i.name) || []);
+      const retryDiff = difficulty;
+      handleGenerate({ theme: retryTheme, ingredients: retryIngredients, difficulty: retryDiff });
+    } else {
+      handleGenerate();
     }
   };
 
-  const handleGenerate = async () => {
-    if (!theme && ingredients.length === 0) return;
+  const handleGenerate = async (retryConfig?: { theme: string, ingredients: string[], difficulty: string } | React.MouseEvent) => {
+    // Check if retryConfig is an actual config or just a mouse event from onClick
+    const isConfig = retryConfig && !('nativeEvent' in retryConfig);
+    const config = isConfig ? retryConfig as { theme: string, ingredients: string[], difficulty: string } : undefined;
+    
+    const currentTheme = config ? config.theme : theme;
+    const currentIngredients = config ? config.ingredients : ingredients;
+    const currentDiff = config ? config.difficulty : difficulty;
+
+    if (!currentTheme && currentIngredients.length === 0 && !sourceImage) return;
 
     setIsGenerating(true);
     setGeneratedRecipe(null);
@@ -167,9 +274,9 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
 
     try {
       const prompt = `Tạo một công thức nấu ăn chuyên nghiệp.
-        ${theme ? `Chủ đề: ${theme}.` : ''}
-        ${ingredients.length > 0 ? `Nguyên liệu bắt buộc: ${ingredients.join(', ')}.` : ''}
-        Độ khó: ${difficulty}.
+        ${currentTheme ? `Chủ đề: ${currentTheme}.` : ''}
+        ${currentIngredients.length > 0 ? `Nguyên liệu bắt buộc: ${currentIngredients.join(', ')}.` : ''}
+        Độ khó: ${currentDiff}.
         Hãy đảm bảo công thức sáng tạo, khả thi và có tính thẩm mỹ cao.`;
 
       const aiConfig = { 
@@ -201,7 +308,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
         }
       }, 1500);
 
-      const result = await generateRecipe(prompt, aiConfig, preferences.selectedModelId);
+      const result = await generateRecipe(prompt, aiConfig, preferences.selectedModelId, sourceImage || undefined);
       
       clearInterval(monologueInterval);
       setMonologue(["Hoàn tất! Công thức đã sẵn sàng."]);
@@ -329,6 +436,15 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 px-4">
+      {confirmModal && (
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
+      )}
       <AnimatePresence>
         {error && (
           <motion.div
@@ -415,34 +531,41 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                 </div>
               </div>
               {creationHistory.length > 0 ? (
-                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 px-1">
+                <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto no-scrollbar px-1 py-1">
                   {creationHistory.map((h, i) => (
-                    <div key={h.id || i} className="flex-shrink-0 relative group">
+                    <div key={h.id || i} className="relative group">
                       <button
                         onClick={() => handleSelectFromHistory(h)}
                         className={cn(
-                          "w-48 p-4 rounded-2xl border transition-all text-left space-y-2",
+                          "w-full p-3.5 rounded-2xl border transition-all text-left flex flex-col justify-center",
                           generatedRecipe?.id === h.id ? "bg-orange-50 border-orange-200 shadow-sm" : "bg-stone-50 border-stone-100 hover:border-stone-300"
                         )}
                       >
-                        <h4 className="text-xs font-bold text-stone-900 truncate">{h.recipe?.title || 'Công thức chưa đặt tên'}</h4>
-                        <p className="text-[9px] text-orange-600 font-bold">
-                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe?.totalCost || 0)}
-                        </p>
-                        <p className="text-[8px] text-stone-400 uppercase font-bold tracking-tighter">
-                          {h.createdAt?.toDate ? h.createdAt.toDate().toLocaleDateString() : 'Vừa xong'}
-                        </p>
+                        <div className="pr-8 space-y-1.5 w-full">
+                          <h4 className="text-xs font-bold text-stone-900 truncate">{h.recipe?.title || 'Công thức chưa đặt tên'}</h4>
+                          <div className="flex items-center gap-2">
+                            <p className="text-[10px] text-orange-600 font-bold">
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe?.totalCost || 0)}
+                            </p>
+                            <span className="w-1 h-1 bg-stone-300 rounded-full"></span>
+                            <p className="text-[9px] text-stone-400 uppercase font-bold tracking-tighter">
+                              {h.createdAt?.toDate ? h.createdAt.toDate().toLocaleDateString() : 'Vừa xong'}
+                            </p>
+                          </div>
+                        </div>
                       </button>
                       <button 
                         onClick={(e) => { 
                           e.stopPropagation(); 
-                          if (confirm('Bạn có chắc chắn muốn xoá bản thảo này?')) {
-                            handleDeleteFromHistory(h.id); 
-                          }
+                          setConfirmModal({
+                            isOpen: true,
+                            title: "Xóa bản thảo này?",
+                            onConfirm: () => handleDeleteFromHistory(h.id)
+                          });
                         }}
-                        className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-lg active:scale-95 z-10 sm:opacity-0 sm:group-hover:opacity-100"
+                        className="absolute top-1/2 -translate-y-1/2 right-3 w-7 h-7 bg-white border border-red-100 text-red-500 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:bg-red-50 shadow-sm active:scale-95 z-50 sm:opacity-0 sm:group-hover:opacity-100"
                       >
-                        <Trash2 className="w-3 h-3" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ))}
@@ -524,6 +647,41 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
             </div>
 
             <div className="space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-1">Hình ảnh gợi ý (Tùy chọn)</label>
+              {sourceImage ? (
+                <div className="relative w-full h-32 rounded-2xl overflow-hidden border border-stone-200 group">
+                  <img src={sourceImage} alt="Gợi ý món ăn" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button onClick={handleRemoveImage} className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors shadow-lg" title="Xóa hình">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  className="w-full py-4 border-2 border-dashed border-stone-200 rounded-2xl flex flex-col items-center justify-center gap-2 hover:border-orange-400 hover:bg-orange-50/50 transition-colors group"
+                >
+                  <div className="p-2 bg-stone-50 rounded-full group-hover:bg-orange-100 transition-colors pointer-events-none">
+                    <ImageIcon className="w-5 h-5 text-stone-400 group-hover:text-orange-500 transition-colors" />
+                  </div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-stone-400 group-hover:text-orange-600 transition-colors pointer-events-none">
+                    Tải lên hoặc Kéo thả hình
+                  </span>
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+            </div>
+
+            <div className="space-y-2">
               <label className="text-[10px] font-bold uppercase tracking-widest text-stone-400 ml-1">Độ khó & Kỹ năng</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['easy', 'medium', 'hard'] as const).map(level => (
@@ -548,7 +706,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
 
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || (!theme && ingredients.length === 0)}
+              disabled={isGenerating || (!theme && ingredients.length === 0 && !sourceImage)}
               className="w-full bg-orange-600 text-white py-5 rounded-3xl font-bold text-sm uppercase tracking-[0.2em] shadow-xl shadow-orange-200 hover:bg-orange-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-[0.98] flex items-center justify-center gap-3 mt-4"
             >
               {isGenerating ? (
@@ -664,9 +822,10 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                   </p>
                 </div>
                 <button
-                  onClick={handleGenerate}
-                  className="px-6 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-800 transition-all active:scale-95"
+                  onClick={handleRetryGeneration}
+                  className="px-6 py-3 bg-stone-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-stone-800 transition-all active:scale-95 flex items-center gap-2"
                 >
+                  <RefreshCw className="w-4 h-4" />
                   Thử sáng tạo lại
                 </button>
               </motion.div>
@@ -686,20 +845,34 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                         </div>
                         <h2 className="text-xl font-bold text-stone-900 leading-tight break-words">{generatedRecipe.recipe?.title}</h2>
                       </div>
-                      {generatedRecipe.id && (
+                      <div className="flex items-center gap-2">
                         <button 
-                          onClick={() => {
-                            if (confirm('Bạn có chắc chắn muốn xoá bản thảo này không?')) {
-                              handleDeleteFromHistory(generatedRecipe.id);
-                              setGeneratedRecipe(null);
-                            }
-                          }}
-                          className="p-2 hover:bg-red-50 text-stone-300 hover:text-red-500 transition-all rounded-xl border border-stone-50"
-                          title="Xoá bản thảo"
+                          onClick={handleRetryGeneration}
+                          className="p-2 hover:bg-orange-50 text-stone-300 hover:text-orange-500 transition-all rounded-xl border border-stone-50"
+                          title="Thử sáng tạo lại"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <RefreshCw className="w-4 h-4" />
                         </button>
-                      )}
+                        {generatedRecipe.id && (
+                          <button 
+                            onClick={() => {
+                              setConfirmModal({
+                                isOpen: true,
+                                title: "Xóa bản thảo này?",
+                                message: "Hành động này không thể hoàn tác.",
+                                onConfirm: () => {
+                                  handleDeleteFromHistory(generatedRecipe.id);
+                                  setGeneratedRecipe(null);
+                                }
+                              });
+                            }}
+                            className="p-2 hover:bg-red-50 text-stone-300 hover:text-red-500 transition-all rounded-xl border border-stone-50"
+                            title="Xoá bản thảo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {generatedRecipe.text && (
@@ -710,16 +883,16 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                       </div>
                     )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-stone-50 p-4 rounded-2xl space-y-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-stone-50 p-4 rounded-2xl space-y-1 min-w-0">
                       <p className="text-[10px] font-bold text-stone-400 uppercase">Ước tính Cost</p>
-                      <p className="text-lg font-bold text-stone-900">
+                      <p className="text-lg font-bold text-stone-900 truncate">
                         {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(generatedRecipe.recipe?.totalCost || 0)}
                       </p>
                     </div>
-                    <div className="bg-stone-50 p-4 rounded-2xl space-y-1">
+                    <div className="bg-stone-50 p-4 rounded-2xl space-y-1 min-w-0">
                       <p className="text-[10px] font-bold text-stone-400 uppercase">Giá gợi ý</p>
-                      <p className="text-lg font-bold text-orange-600">
+                      <p className="text-lg font-bold text-orange-600 truncate">
                         {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(generatedRecipe.recipe?.recommendedPrice || 0)}
                       </p>
                     </div>

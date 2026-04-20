@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { db, collection, updateDoc, doc, setDoc, serverTimestamp, getDocs, auth } from '../lib/firebase';
+import { db, collection, updateDoc, doc, setDoc, serverTimestamp, getDocs, auth, query, where } from '../lib/firebase';
 import { multiAgentChatWithFallback } from '../lib/ai';
 import { extractMemoriesFromChat } from '../lib/memory';
 import { ChatMessageData } from '../types/chat';
@@ -50,10 +50,18 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         groqKey: preferences.groqKey
       };
 
-      const inventorySnap = await getDocs(collection(db, 'inventory'));
-      const inventory = inventorySnap.docs.map(d => d.data());
-      const recipesSnap = await getDocs(collection(db, 'recipes'));
-      const recipes = recipesSnap.docs.map(d => d.data());
+      let inventory: any[] = [];
+      let recipes: any[] = [];
+      
+      if (auth.currentUser) {
+        const invQ = query(collection(db, 'inventory'), where('authorId', '==', auth.currentUser.uid));
+        const inventorySnap = await getDocs(invQ);
+        inventory = inventorySnap.docs.map(d => d.data());
+        
+        const recQ = query(collection(db, 'recipes'), where('authorId', '==', auth.currentUser.uid));
+        const recipesSnap = await getDocs(recQ);
+        recipes = recipesSnap.docs.map(d => d.data());
+      }
 
       // Use non-streaming fallback for complex orchestration (Recipes, etc)
       // or implement a smart switch. For now, let's use streaming for direct chat if no file analysis needed
