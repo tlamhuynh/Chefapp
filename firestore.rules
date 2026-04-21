@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    match /conversations/{conversationId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(conversationId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(conversationId);
+      allow update: if isOwner(resource.data.userId) && isValidId(conversationId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /chats/{chatId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(chatId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(chatId);
+      allow update: if isOwner(resource.data.userId) && isValidId(chatId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /creative_conversations/{conversationId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(conversationId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(conversationId);
+      allow update: if isOwner(resource.data.userId) && isValidId(conversationId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /creative_chats/{chatId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(chatId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(chatId);
+      allow update: if isOwner(resource.data.userId) && isValidId(chatId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /recipes/{recipeId} {
+      allow read, delete: if isOwner(resource.data.authorId) && isValidId(recipeId);
+      allow list: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.authorId) && isValidId(recipeId);
+      allow update: if isOwner(resource.data.authorId) && isValidId(recipeId) && request.resource.data.authorId == resource.data.authorId;
+    }
+
+    match /inventory/{inventoryId} {
+      allow read, delete: if isOwner(resource.data.authorId) && isValidId(inventoryId);
+      allow list: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.authorId) && isValidId(inventoryId);
+      allow update: if isOwner(resource.data.authorId) && isValidId(inventoryId) && request.resource.data.authorId == resource.data.authorId;
+    }
+
+    match /users/{userId} {
+      allow read, delete: if isOwner(userId) && isValidId(userId);
+      allow list: if false; 
+      allow create: if isOwner(userId) && isValidId(userId);
+      allow update: if isOwner(userId) && isValidId(userId);
+    }
+    
+    match /food_images/{imageId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(imageId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(imageId);
+      allow update: if isOwner(resource.data.userId) && isValidId(imageId) && request.resource.data.userId == resource.data.userId;
+    }
+  }
+}

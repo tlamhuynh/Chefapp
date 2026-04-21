@@ -5,6 +5,7 @@ import { ChatMessageData, ConversationData } from '../types/chat';
 export function useChefChat() {
   const [messages, setMessages] = useState<ChatMessageData[]>([]);
   const [conversations, setConversations] = useState<ConversationData[]>([]);
+  // Start with a new session explicitly, rather than auto-selecting
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
   // Conversations listener
@@ -20,9 +21,10 @@ export function useChefChat() {
     const unsubscribe = onSnapshot(convQ, (snapshot) => {
       const convs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ConversationData[];
       setConversations(convs);
-      if (convs.length > 0 && !activeConversationId) {
-        setActiveConversationId(convs[0].id);
-      }
+      
+      // We no longer auto-select on initial load or transient drops.
+      // If activeConversationId is null, it stays null (New Session).
+      // If it's a specific ID, it stays that ID even if temporarily missing.
     });
 
     return () => unsubscribe();
@@ -30,8 +32,10 @@ export function useChefChat() {
 
   // Messages listener
   useEffect(() => {
+    // Clear immediately to prevent overlapping history
+    setMessages([]);
+
     if (!auth.currentUser || !activeConversationId) {
-      setMessages([]);
       return;
     }
 

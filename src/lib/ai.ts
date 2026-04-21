@@ -16,16 +16,16 @@ export interface AIModel {
 }
 
 export const AVAILABLE_MODELS: AIModel[] = [
-  { id: 'gemini-flash-latest', name: 'Gemini Flash', provider: 'google', description: 'Model tốc độ cao từ Google, tối ưu cho phân tích nhanh.' },
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini Pro (3.1)', provider: 'google', description: 'Model mạnh nhất từ Google, hỗ trợ suy luận phức tạp.' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Model thế hệ mới nhất, cực nhanh và thông minh.' },
+  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', provider: 'google', description: 'Model mạnh mẽ nhất thế hệ mới (Preview).' },
+  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite', provider: 'google', description: 'Model tốc độ cao thế hệ mới (Preview).' },
+  { id: 'gemini-flash-latest', name: 'Gemini Flash Latest', provider: 'google', description: 'Phiên bản tốc độ mạnh mẽ và ổn định.' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'google', description: 'Giao diện và phản hồi siêu nhanh thế hệ 2.0.' },
   { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai', description: 'Model đa phương thức mạnh mẽ từ OpenAI.' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', description: 'Cực nhanh, thông minh và giá thành tối ưu.' },
   { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'anthropic', description: 'Thông minh nhất hiện nay. Văn phong cực tốt.' },
   { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'groq', description: 'Tốc độ cực nhanh từ Groq. Phản hồi gần như tức thì.' },
   { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'groq', description: 'Model tốc độ siêu nhanh và miễn phí từ Groq.' },
   { id: 'nvidia/meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B (NVIDIA)', provider: 'nvidia', description: 'Model mạnh mẽ từ NVIDIA NIM, độ trễ thấp.' },
-  { id: 'nvidia/deepseek-ai/deepseek-r1', name: 'DeepSeek R1 (NVIDIA)', provider: 'nvidia', description: 'DeepSeek R1 chạy tối ưu trên kiến trúc NVIDIA.' },
   { id: 'openrouter/google/gemini-2.0-flash-lite-preview-02-05:free', name: 'Gemini 2.0 Flash Lite (Free)', provider: 'openrouter', description: 'Model miễn phí qua OpenRouter.' },
   { id: 'openrouter/meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', provider: 'openrouter', description: 'Llama 70B miễn phí từ OpenRouter.' },
   { id: 'openrouter/liquid/lfm-40b', name: 'Liquid LFM 40B (OpenRouter)', provider: 'openrouter', description: 'Mô hình hiệu suất tốt và linh hoạt.' },
@@ -256,9 +256,7 @@ export async function* chatWithAIStream(
   systemInstruction: string,
   config?: AIConfig
 ) {
-  const mappedModelId = modelId.includes('flash') ? 'gemini-flash-latest' : 
-                       modelId.includes('pro') ? 'gemini-3.1-pro-preview' : 
-                       'gemini-flash-latest';
+  const mappedModelId = modelId.startsWith('gemini') ? modelId : 'gemini-2.0-flash';
 
   const formattedMessages = formatMessages(messages);
   const geminiMessages = convertToGeminiMessages(formattedMessages);
@@ -298,77 +296,7 @@ export async function chatWithAI(
   const formattedMessages = formatMessages(messages);
   logger.info(`[chatWithAI] Request to ${modelId}`, { messages: formattedMessages, type: responseSchema ? 'object' : 'text' });
 
-  // Handle Gemini directly in frontend
-  if (modelId.includes('gemini') || modelId.includes('google')) {
-    try {
-      // Map prohibited or common IDs to recommended aliases for the @google/genai SDK
-      let mappedModelId = modelId;
-      if (modelId === 'gemini-3-flash-preview') {
-        mappedModelId = 'gemini-3-flash-preview';
-      } else if (modelId === 'gemini-3.1-pro-preview') {
-        mappedModelId = 'gemini-3.1-pro-preview';
-      } else if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
-        mappedModelId = 'gemini-flash-latest';
-      } else if (modelId.includes('pro') || modelId === 'gemini-1.5-pro') {
-        mappedModelId = 'gemini-3.1-pro-preview';
-      }
-
-      const geminiMessages = convertToGeminiMessages(formattedMessages);
-      
-      // Separate history and latest message
-      const history = geminiMessages.slice(0, -1);
-      const latestMessage = geminiMessages[geminiMessages.length - 1];
-
-      const genConfig: any = {
-        systemInstruction: systemInstruction,
-        maxOutputTokens: 4096,
-        temperature: 0.7,
-      };
-
-      if (responseSchema) {
-        genConfig.responseMimeType = "application/json";
-      }
-
-      if (tools) {
-        genConfig.tools = convertToGeminiTools(tools);
-      }
-
-      const customGoogleAI = (config?.googleKey && config.googleKey !== 'ENV') 
-        ? new GoogleGenAI({ apiKey: config.googleKey }) 
-        : googleAI;
-
-      const response = await customGoogleAI.models.generateContent({
-        model: mappedModelId,
-        contents: geminiMessages,
-        config: genConfig
-      });
-
-      // The SDK response structure: response.text or response.response.text() 
-      const res = response as any;
-      const resultText = res.text || (res.response && typeof res.response.text === 'function' ? res.response.text() : '');
-
-      if (responseSchema) {
-        if (!resultText || resultText.trim().length === 0) {
-          throw new Error("AI trả về kết quả trống hoặc không đúng định dạng JSON. Hãy thử lại hoặc đổi Model.");
-        }
-        return robustParseJson(resultText);
-      }
-
-      return {
-        text: resultText,
-        functionCalls: response.functionCalls?.map((fc: any) => ({
-          name: fc.name,
-          args: fc.args
-        }))
-      };
-    } catch (error: any) {
-      logger.error(`[chatWithAI] Gemini frontend failed`, error);
-      throw error;
-    }
-  }
-
-  // Handle Anthropic directly (Anthropic has CORS issues in browser, but Capacitor bypasses them natively. However API format is different)
-  // For other providers (OpenAI, OpenRouter, Groq, NVIDIA), they use the OpenAI-compatible REST API.
+  // Multi-provider routing setup
   let apiKey = '';
   let baseURL = '';
   let actualModelId = modelId;
@@ -504,6 +432,54 @@ export async function chatWithAI(
     }
   }
 
+  // Handle Gemini directly via SDK instead of hitting the server API proxy
+  // This ensures it works purely client-side when exported as an APK or Static Website
+  if (modelId.startsWith("gemini")) {
+    let mappedModelId = modelId;
+    // Remove aggressive suffixing that caused 404s for some users
+    // The bare IDs like gemini-1.5-flash are usually sufficient and more compatible
+    if (modelId === 'gemini-3.1-flash-lite-preview' || modelId === 'gemini-3.1-pro-preview' || modelId === 'gemini-2.0-flash') {
+      mappedModelId = modelId;
+    }
+
+    logger.info(`[chatWithAI] Using Direct Client SDK for Gemini: ${mappedModelId}`);
+    try {
+      const gApiKey = config?.googleKey || process.env.GEMINI_API_KEY || "";
+      if (!gApiKey) throw new Error("Missing Gemini API Key");
+      
+      const genAIClient = new GoogleGenAI({ apiKey: gApiKey });
+      const geminiMessages = convertToGeminiMessages(formattedMessages);
+      
+      const res = await genAIClient.models.generateContent({
+        model: mappedModelId,
+        contents: geminiMessages,
+        config: {
+          systemInstruction: systemInstruction || undefined,
+          temperature: 0.7,
+          responseMimeType: responseSchema ? "application/json" : undefined,
+          responseSchema: responseSchema
+        }
+      });
+      
+      const contentStr = res.text || '{}';
+      
+      if (responseSchema) {
+        return robustParseJson(contentStr);
+      }
+      
+      return { text: contentStr };
+    } catch (e: any) {
+      logger.error(`[chatWithAI] Direct Gemini fetch failed`, { error: e.message, raw: e });
+      let errorMessage = e.message || String(e);
+      if (errorMessage.toLowerCase().includes("high demand") || errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+        errorMessage = "Hệ thống AI hiện đang quá tải (High Demand). Vui lòng thử lại sau ít phút hoặc đổi sang model khác trong Cài đặt.";
+      } else if (errorMessage.includes("404") || errorMessage.includes("NOT_FOUND")) {
+        errorMessage = `Model "${mappedModelId}" không tìm thấy hoặc chưa được hỗ trợ với cấu hình API Key này.`;
+      }
+      throw new Error(errorMessage);
+    }
+  }
+
   // Call server-side proxy to avoid CORS and keep keys secure (for non-Google or fallback)
   const response = await fetch('/api/chat', {
     method: 'POST',
@@ -520,9 +496,25 @@ export async function chatWithAI(
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
+    let errorData;
+    const text = await response.text();
+    try {
+      errorData = JSON.parse(text);
+    } catch {
+      errorData = { error: text.substring(0, 100) };
+    }
     logger.error(`[chatWithAI] Error from ${modelId}`, errorData);
-    const msg = errorData.error || `AI call failed`;
+    const msg = errorData.error || errorData.rawError || `AI call failed (HTTP ${response.status})`;
+    
+    // Auto-fallback mechanism
+    if (response.status === 429 || response.status === 504) {
+      const fallbackModel = 'gemini-2.0-flash';
+      if (!modelId.includes('flash') && modelId !== fallbackModel) {
+        logger.warn(`[chatWithAI] Model ${modelId} failed with ${response.status}, auto-falling back to ${fallbackModel}...`);
+        return chatWithAI(fallbackModel, messages, systemInstruction, tools, config, responseSchema);
+      }
+    }
+
     throw new Error(`[${response.status}] ${msg}`);
   }
 
@@ -667,20 +659,11 @@ export async function generateProactiveInsights(
   // Use Gemini SDK directly in frontend if it's a Google model
   if (modelId.includes('gemini') || modelId.includes('google')) {
     try {
-      // Map prohibited or common IDs to recommended aliases for the @google/genai SDK
-      let mappedModelId = modelId;
-      if (modelId === 'gemini-3-flash-preview') {
-        mappedModelId = 'gemini-3-flash-preview';
-      } else if (modelId === 'gemini-3.1-pro-preview') {
-        mappedModelId = 'gemini-3.1-pro-preview';
-      } else if (modelId.includes('flash') || modelId === 'gemini-1.5-flash') {
-        mappedModelId = 'gemini-flash-latest';
-      } else if (modelId.includes('pro') || modelId === 'gemini-1.5-pro') {
-        mappedModelId = 'gemini-3.1-pro-preview';
-      }
+      // Map to most stable IDs only if necessary, otherwise use original
+      let mappedModelId = modelId.startsWith('gemini') ? modelId : 'gemini-2.0-flash';
 
       const systemPrompt = `
-        BẠN LÀ KITCHEN INTELLIGENCE AGENT.
+        BẠN LÀ KITCHEN INTELLIGENCE AGENT (TRUY XUẤT TỪ GEMINI ${modelId}).
         Nhiệm vụ: Phân tích dữ liệu kho và công thức để tìm ra các cơ hội tối ưu hóa.
         Dữ liệu kho: ${JSON.stringify(inventory.slice(0, 30))}
         Dữ liệu công thức: ${JSON.stringify(recipes.slice(0, 20))}
@@ -693,9 +676,12 @@ export async function generateProactiveInsights(
         }
       `;
 
-      const response = await googleAI.models.generateContent({
+      const gApiKey = config?.googleKey || process.env.GEMINI_API_KEY || "";
+      const tempGenAI = new GoogleGenAI({ apiKey: gApiKey });
+      
+      const response = await tempGenAI.models.generateContent({
         model: mappedModelId,
-        contents: "Phân tích dữ liệu ngay và trả về JSON.",
+        contents: [{ role: 'user', parts: [{ text: "Phân tích dữ liệu ngay và trả về JSON." }] }],
         config: {
           systemInstruction: systemPrompt,
           responseMimeType: "application/json",
@@ -721,14 +707,22 @@ export async function generateProactiveInsights(
         }
       });
 
-      if (!response.text) {
+      const responseText = response.text;
+      
+      if (!responseText) {
         throw new Error("Gemini returned empty text");
       }
 
-      return robustParseJson(response.text);
+      return robustParseJson(responseText);
     } catch (error: any) {
-      logger.error(`[generateProactiveInsights] Gemini frontend call failed`, error);
-      // Fallback to server proxy if frontend fails (maybe for non-Google models anyway)
+      logger.error(`[generateProactiveInsights] Gemini frontend call failed`, { error: error.message, raw: error });
+      let errorMessage = error.message || String(error);
+      if (errorMessage.toLowerCase().includes("high demand") || errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+        errorMessage = "Hệ thống AI hiện đang quá tải (High Demand). Vui lòng thử lại sau ít phút.";
+      } else if (errorMessage.includes("404") || errorMessage.includes("NOT_FOUND")) {
+        errorMessage = `Model "${modelId}" không tìm thấy hoặc chưa được hỗ trợ với cấu hình API Key này.`;
+      }
+      throw new Error(errorMessage);
     }
   }
 

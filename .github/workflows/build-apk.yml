@@ -50,6 +50,27 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      - name: 🔑 Cache Android Keystore (giữ SHA-1 không đổi)
+        id: cache-keystore
+        uses: actions/cache@v4
+        with:
+          path: android/app/debug.keystore
+          key: android-debug-keystore-${{ runner.os }}-v1
+
+      - name: 🔑 Generate Keystore if not exists
+        if: steps.cache-keystore.outputs.cache-hit != 'true'
+        run: |
+          keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "C=US, O=Android, CN=Android Debug"
+          echo "✅ Đã tạo Debug Keystore mới"
+
+      - name: 🔑 PRINT FIREBASE SHA-1 FINGERPRINT
+        run: |
+          echo "=========================================================="
+          echo "📋 BẠN HÃY COPY MÃ SHA-1 BÊN DƯỚI VÀ DÁN VÀO FIREBASE CONSOLE:"
+          echo "=========================================================="
+          keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep "SHA1:"
+          echo "=========================================================="
+
       - name: Set App Version and Environment Variables
         run: |
           VERSION_NAME=${{ github.event.inputs.versionName || '1.0.0' }}
@@ -74,6 +95,21 @@ jobs:
         run: |
           gradle wrapper --gradle-version 8.11.1
           chmod +x ./gradlew
+          
+          # Force Gradle to use our stored debug.keystore
+          cat << 'EOF' > app/build-extras.gradle
+          android {
+            signingConfigs {
+              debug {
+                storeFile file('debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+              }
+            }
+          }
+          EOF
+          
           ./gradlew assembleDebug
 
       - name: Rename APK

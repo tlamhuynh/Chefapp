@@ -30,15 +30,14 @@ const mapModelId = (provider: string, mId: string) => {
   }
   
   if (provider === 'google') {
-    // Follow skill guidelines for Gemini aliases
     if (mId === 'gemini-3-flash-preview') {
       finalId = 'gemini-3-flash-preview';
     } else if (mId === 'gemini-3.1-pro-preview') {
       finalId = 'gemini-3.1-pro-preview';
     } else if (mId.includes('flash') || mId === 'gemini-1.5-flash') {
-      finalId = 'gemini-flash-latest';
+      finalId = 'gemini-1.5-flash';
     } else if (mId.includes('pro') || mId === 'gemini-1.5-pro') {
-      finalId = 'gemini-3.1-pro-preview';
+      finalId = 'gemini-1.5-pro';
     }
   } else if (provider === 'nvidia') {
     // Standardize to llama-3.3 if llama-3.1 is requested
@@ -77,7 +76,15 @@ async function fetchWithTimeout(url: string, options: any = {}, timeout: number 
 
 // Helper to call NVIDIA NIM directly (bypassing AI SDK bugs in this environment)
 async function callNvidiaDirect(modelId: string, apiKey: string, messages: any[], systemInstruction?: string, temperature: number = 0.7, jsonMode: boolean = false) {
-  const nvidiaModelId = modelId.replace('nvidia/', '');
+  let nvidiaModelId = modelId.replace('nvidia/', '');
+  
+  // Hard fallback for EOL models deeply inside the direct caller just in case
+  if (nvidiaModelId.includes('deepseek-r1') || nvidiaModelId.includes('deepseek-ai')) {
+    nvidiaModelId = 'meta/llama-3.3-70b-instruct';
+  } else if (nvidiaModelId.includes('kimi-2.5')) {
+    nvidiaModelId = 'moonshotai/kimi-k2.5';
+  }
+
   log(`[NVIDIA Direct] Calling ${nvidiaModelId}`);
   
   try {
@@ -96,7 +103,7 @@ async function callNvidiaDirect(modelId: string, apiKey: string, messages: any[]
         temperature,
         response_format: jsonMode ? { type: 'json_object' } : undefined
       })
-    }, 45000); // 45s timeout for NVIDIA
+    }, 120000); // 120s timeout for NVIDIA
 
     if (!response.ok) {
       const errText = await response.text();

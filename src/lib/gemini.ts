@@ -2,11 +2,11 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { chatWithAI, chatWithAIWithFallback } from './ai';
 
-export const chefModel = "gemini-flash-latest";
+export const chefModel = "gemini-2.0-flash";
 
 const defaultFallbacks = [
-  'gemini-3.1-pro-preview',
-  'gemini-3-flash-preview',
+  'gemini-flash-latest',
+  'gemini-2.0-flash',
   'gpt-4o-mini'
 ];
 

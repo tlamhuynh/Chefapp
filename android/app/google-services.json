@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "517596803084",
+    "project_id": "gen-lang-client-0020625599",
+    "storage_bucket": "gen-lang-client-0020625599.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:517596803084:android:141116fba6027c9cbafe29",
+        "android_client_info": {
+          "package_name": "com.souschef.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "517596803084-p29au7bdiq1ptdoees5a6mbr95t6a4bp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgBe5Bt-JGO83lJborYlL-Kinfvlt6Wyo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "517596803084-p29au7bdiq1ptdoees5a6mbr95t6a4bp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

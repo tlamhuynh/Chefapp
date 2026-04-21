@@ -823,9 +823,9 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="bg-white w-full max-w-lg rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden max-h-[90vh] flex flex-col"
+              className="bg-white w-full max-w-lg rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden max-h-[85vh] flex flex-col mt-auto sm:mt-0"
             >
-              <div className="p-6 border-b border-neutral-100 flex justify-between items-center">
+              <div className="p-6 border-b border-neutral-100 flex justify-between items-center bg-white shrink-0">
                 <h2 className="text-xl font-display font-bold text-neutral-900">{selectedRecipe.title}</h2>
                 <button onClick={() => setSelectedRecipe(null)} className="p-2 bg-neutral-100 rounded-full">
                   <X className="w-5 h-5 text-neutral-500" />
@@ -881,7 +881,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                 </section>
               </div>
 
-              <div className="p-6 bg-white border-t border-neutral-100 flex gap-3">
+              <div className="p-6 pb-8 sm:pb-6 bg-white border-t border-neutral-100 flex gap-3 shrink-0">
                 <button className="flex-1 py-4 bg-neutral-100 text-neutral-900 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
                   <Edit3 className="w-4 h-4" /> Chỉnh sửa
                 </button>
@@ -906,9 +906,9 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="bg-white w-full max-w-2xl rounded-[2rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+              className="bg-white w-full max-w-2xl rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden shadow-2xl flex flex-col max-h-[85vh] mt-auto sm:mt-0"
             >
-              <div className="p-6 border-b border-neutral-100 flex justify-between items-center bg-neutral-50/50">
+              <div className="p-6 border-b border-neutral-100 flex justify-between items-center bg-white shrink-0">
                 <div>
                   <h2 className="text-xl font-display font-bold text-neutral-900">{isScanningInvoice ? "Quét hóa đơn nhập hàng" : "Số hóa Menu"}</h2>
                   <p className="text-[10px] text-neutral-400 uppercase font-bold tracking-widest">{isScanningInvoice ? "AI Invoice Digitizer" : "AI Menu Digitizer"}</p>
@@ -1057,7 +1057,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
               </div>
 
               {(analysisResult || invoiceAnalysisResult) && (
-                <div className="p-6 bg-white border-t border-neutral-100 flex gap-3">
+                <div className="p-6 pb-8 sm:pb-6 bg-white border-t border-neutral-100 flex gap-3 shrink-0">
                   <button 
                     onClick={() => { setAnalysisResult(null); setInvoiceAnalysisResult(null); }}
                     className="flex-1 py-4 bg-neutral-100 text-neutral-900 rounded-xl font-bold text-sm"

@@ -5,24 +5,31 @@ import { extractMemoriesFromChat } from '../lib/memory';
 import { ChatMessageData } from '../types/chat';
 
 export function useAiProcessing(activeConversationId: string | null, messages: ChatMessageData[], preferences: any) {
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingConversations, setProcessingConversations] = useState<Set<string>>(new Set());
   const [streamingText, setStreamingText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const isProcessingRef = useRef(false);
+  
+  const isProcessing = activeConversationId ? processingConversations.has(activeConversationId) : false;
+
+  // We don't need to clear processing state on switch because it's localized to conversation ID.
+  useEffect(() => {
+    setError(null);
+  }, [activeConversationId]);
 
   useEffect(() => {
     const pendingMsg = messages.find(m => m.sender === 'user' && m.status === 'pending');
-    if (pendingMsg && !isProcessingRef.current && activeConversationId) {
-      triggerAiResponse(pendingMsg, messages, preferences);
+    if (pendingMsg && activeConversationId && !processingConversations.has(activeConversationId)) {
+      triggerAiResponse(pendingMsg, messages, preferences, activeConversationId);
     }
   }, [messages, activeConversationId]);
 
-  const triggerAiResponse = async (userMsg: ChatMessageData, allMessages: ChatMessageData[], preferences: any) => {
-    if (!auth.currentUser || isProcessingRef.current) return;
+  const triggerAiResponse = async (userMsg: ChatMessageData, allMessages: ChatMessageData[], preferences: any, targetConvId: string) => {
+    if (!auth.currentUser) return;
     
-    isProcessingRef.current = true;
-    setIsProcessing(true);
-    setStreamingText("");
+    setProcessingConversations(prev => new Set(prev).add(targetConvId));
+    if (activeConversationId === targetConvId) {
+       setStreamingText("");
+    }
 
     try {
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'processing' });
@@ -80,8 +87,8 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       
       // Prepare fallback models (try Gemini as a reliable fallback if custom selection fails)
       const allFallbacks = [
+        'gemini-flash-latest', 
         'gemini-2.0-flash', 
-        'gemini-1.5-flash', 
         'gpt-4o-mini',
         'groq/llama-3.3-70b-versatile',
         'openrouter/google/gemini-2.0-flash-lite-preview-02-05:free',
@@ -108,7 +115,7 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         internalMonologue: result.internalMonologue,
         sender: 'ai',
         userId: auth.currentUser.uid,
-        conversationId: activeConversationId,
+        conversationId: targetConvId,
         timestamp: serverTimestamp(),
         recipe: result.recipe,
         suggestions: result.suggestions,
@@ -140,14 +147,16 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       // Shorten extremely long messages
       const shortMsg = rawMsg.length > 200 ? rawMsg.substring(0, 200) + '...' : rawMsg;
 
-      setError(shortMsg);
+      if (activeConversationId === targetConvId) {
+        setError(shortMsg);
+      }
       
       const errorMsgId = Math.random().toString(36).substring(7);
       await setDoc(doc(db, 'chats', errorMsgId), {
         text: `⚠️ **Lỗi hệ thống AI:** ${shortMsg}`,
         sender: 'ai',
         userId: auth.currentUser.uid,
-        conversationId: activeConversationId,
+        conversationId: targetConvId,
         timestamp: serverTimestamp(),
         suggestions: [
           { label: '🔄 Thử lại', action: 'retry' }
@@ -157,9 +166,14 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       
       await updateDoc(doc(db, 'chats', userMsg.id), { status: 'error' });
     } finally {
-      isProcessingRef.current = false;
-      setIsProcessing(false);
-      setStreamingText("");
+      setProcessingConversations(prev => {
+        const next = new Set(prev);
+        next.delete(targetConvId);
+        return next;
+      });
+      if (activeConversationId === targetConvId) {
+         setStreamingText("");
+      }
     }
   };
 

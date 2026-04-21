@@ -280,6 +280,7 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
           setSearchQuery={setSearchQuery}
           isRecipeCrawActive={isRecipeCrawActive}
           setIsRecipeCrawActive={setIsRecipeCrawActive}
+          createNewConversation={createNewConversation}
         />
 
         <MessageList 

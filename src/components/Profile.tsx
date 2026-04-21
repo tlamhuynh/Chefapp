@@ -5,6 +5,7 @@ import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, D
 import { LocalDb } from '../lib/localDb';
 import { cn } from '../lib/utils';
 import { AVAILABLE_MODELS, chatWithAI } from '../lib/ai';
+import { useDriveBackup } from '../hooks/useDriveBackup';
 
 interface ProfileProps {
   user: User;
@@ -13,6 +14,7 @@ interface ProfileProps {
 }
 
 export function Profile({ user, preferences, updatePreference }: ProfileProps) {
+  const { performBackup, isBackingUp, backupStatus } = useDriveBackup();
   const [isExporting, setIsExporting] = useState(false);
   const [showBackupSuccess, setShowBackupSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -22,7 +24,10 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = async () => {
+    const { signOutDeviceAware } = await import('../lib/auth-native');
+    await signOutDeviceAware();
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -614,6 +619,84 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
       </section>
 
       <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+        
+        <button 
+          onClick={async () => {
+            const newState = !preferences.autoBackup;
+            updatePreference('autoBackup', newState);
+            localStorage.setItem('auto_backup_enabled', String(newState));
+            
+            if (newState) {
+              alert("Tính năng Sao lưu tự động đã BẬT.\nHệ thống sẽ tự đồng bộ dữ liệu của bạn lên Google Drive ngay khi có bất kỳ thay đổi nào.\n\nLưu ý: Nếu Google thu hồi thẻ phiên đăng nhập, hệ thống sẽ tạm dừng đồng bộ cho tới khi bạn ấn 'Sao lưu' thủ công 1 lần.");
+            }
+          }}
+          className={cn(
+            "w-full p-6 flex flex-col items-start justify-center hover:bg-neutral-50 transition-all border-b border-neutral-100 group relative",
+            preferences.autoBackup ? "bg-green-50/10" : ""
+          )}
+        >
+          <div className="w-full flex items-center justify-between">
+            <div className="flex items-center gap-5">
+              <div className={cn(
+                 "w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-sm",
+                 preferences.autoBackup ? "bg-green-50" : "bg-neutral-50 group-hover:bg-neutral-100"
+              )}>
+                <Check className={cn(
+                   "w-6 h-6",
+                   preferences.autoBackup ? "text-green-600" : "text-neutral-400"
+                )} />
+              </div>
+              <div className="text-left space-y-0.5">
+                <span className="font-bold text-neutral-900 block text-lg">Sao lưu Tự động (Auto-Sync)</span>
+                <span className="text-sm text-neutral-500 font-medium">Lưu ngầm lên Drive sau mỗi 10 giây khi có thay đổi</span>
+              </div>
+            </div>
+            <div className={cn(
+              "w-10 h-6 rounded-full transition-colors flex items-center px-1 shadow-inner",
+              preferences.autoBackup ? "bg-green-500" : "bg-neutral-200"
+            )}>
+              <div className={cn(
+                "w-4 h-4 bg-white rounded-full shadow-sm transition-transform",
+                preferences.autoBackup ? "translate-x-4" : "translate-x-0"
+              )} />
+            </div>
+          </div>
+        </button>
+
+        <button 
+          onClick={performBackup}
+          disabled={isBackingUp}
+          className="w-full p-6 flex flex-col items-start justify-center hover:bg-neutral-50 transition-all border-b border-neutral-100 group relative"
+        >
+          <div className="w-full flex items-center justify-between">
+            <div className="flex items-center gap-5">
+              <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-all shadow-sm">
+                <Cloud className="w-6 h-6 text-blue-600" />
+              </div>
+              <div className="text-left space-y-0.5">
+                <span className="font-bold text-neutral-900 block text-lg">Sao lưu Google Drive</span>
+                <span className="text-sm text-neutral-500 font-medium">Lưu trữ an toàn dữ liệu đầu bếp của bạn</span>
+              </div>
+            </div>
+            {isBackingUp ? (
+              <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+            ) : (
+              <ChevronRight className="w-5 h-5 text-neutral-300" />
+            )}
+          </div>
+          <AnimatePresence>
+            {backupStatus && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className={cn("mt-4 text-sm font-medium w-full text-left pl-[68px]", backupStatus.includes('❌') ? "text-red-500" : "text-blue-600")}
+              >
+                {backupStatus}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </button>
         <button className="w-full p-6 flex items-center justify-between hover:bg-neutral-50 transition-all border-b border-neutral-100 group">
           <div className="flex items-center gap-5">
             <div className="w-12 h-12 bg-neutral-50 rounded-xl flex items-center justify-center group-hover:bg-white transition-all shadow-sm">

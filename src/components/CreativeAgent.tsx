@@ -49,7 +49,7 @@ export function CreativeAgent({
   setActiveConversationId
 }: { 
   preferences: any, 
-  updatePreference: (key: string, value: string) => void, 
+  updatePreference: (key: string, value: any) => void, 
   setActiveTab: (tab: any) => void,
   activeConversationId: string | null,
   setActiveConversationId: (id: string | null) => void
@@ -60,8 +60,10 @@ export function CreativeAgent({
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmModal, setConfirmModal] = useState<{ isOpen: boolean, title: string, message?: string, onConfirm: () => void } | null>(null);
   const [input, setInput] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingConversations, setProcessingConversations] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  const isProcessing = activeConversationId ? processingConversations.has(activeConversationId) : false;
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [showMonologue, setShowMonologue] = useState<Record<string, boolean>>({});
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -113,8 +115,11 @@ export function CreativeAgent({
 
   // Load messages for active conversation
   useEffect(() => {
+    // Clear immediately to prevent overlapping history
+    setMessages([]);
+    setError(null);
+
     if (!activeConversationId || !auth.currentUser) {
-      setMessages([]);
       return;
     }
 
@@ -321,7 +326,7 @@ export function CreativeAgent({
 
     setInput('');
     setAttachments([]);
-    setIsProcessing(true);
+    setProcessingConversations(prev => new Set(prev).add(currentConvId!));
     setError(null);
 
     try {
@@ -357,11 +362,10 @@ export function CreativeAgent({
 
       // Define fallback chain
       const fallbacks = [
+        'gemini-flash-latest',
         'gemini-2.0-flash',
-        'gemini-1.5-pro',
         'gpt-4o-mini',
         'groq/llama-3.3-70b-versatile',
-        'openrouter/meta-llama/llama-3.3-70b-instruct:free',
         'nvidia/meta/llama-3.3-70b-instruct'
       ].filter(id => id !== preferences.selectedModelId);
 
@@ -425,7 +429,11 @@ export function CreativeAgent({
       };
       await addDoc(collection(db, 'creative_chats'), errAiMsg);
     } finally {
-      setIsProcessing(false);
+      setProcessingConversations(prev => {
+        const next = new Set(prev);
+        next.delete(currentConvId!);
+        return next;
+      });
     }
   };
 
@@ -449,7 +457,7 @@ export function CreativeAgent({
   );
 
   return (
-    <div className="flex h-[calc(100vh-140px)] md:h-[calc(100vh-100px)] bg-white rounded-3xl overflow-hidden border border-stone-100 shadow-sm relative">
+    <div className="flex h-full bg-white overflow-hidden relative">
       {confirmModal && (
         <ConfirmModal
           isOpen={confirmModal.isOpen}
@@ -459,6 +467,42 @@ export function CreativeAgent({
           onCancel={() => setConfirmModal(null)}
         />
       )}
+
+      {/* Sidebar - Desktop Only Rail */}
+      <aside className="hidden lg:flex w-16 flex-col bg-white border-r border-stone-100 z-30 shrink-0">
+        <div className="flex-1 py-8 flex flex-col items-center gap-10">
+          <Logo size={20} />
+          
+          <div className="flex flex-col gap-6">
+            <button 
+              onClick={() => setShowHistory(!showHistory)}
+              className={cn(
+                "w-10 h-10 rounded-[1.25rem] flex items-center justify-center transition-all duration-500",
+                showHistory ? "bg-stone-900 text-white shadow-xl scale-110" : "text-stone-300 hover:text-stone-900 hover:bg-stone-50"
+              )}
+            >
+              <MessageSquare className="w-5 h-5" />
+            </button>
+            
+            <button 
+              onClick={startNewChat}
+              className="w-10 h-10 rounded-[1.25rem] flex items-center justify-center text-stone-300 hover:text-stone-900 hover:bg-stone-50 transition-all active:scale-95"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-stone-50 flex flex-col items-center gap-4">
+          <button onClick={() => updatePreference('showInternalThoughts', !preferences.showInternalThoughts)} className={cn("w-10 h-10 rounded-xl flex items-center justify-center transition-all", preferences.showInternalThoughts ? "bg-stone-900 text-white" : "text-stone-300 hover:text-stone-900")}>
+            <Cpu className="w-5 h-5" />
+          </button>
+          <button onClick={() => setActiveTab?.('profile')} className="w-10 h-10 rounded-xl flex items-center justify-center text-stone-300 hover:text-stone-900 transition-all">
+            <User className="w-5 h-5" />
+          </button>
+        </div>
+      </aside>
+
       {/* Sidebar - Made absolute on mobile for better UX */}
       <AnimatePresence>
         {showHistory && (
@@ -466,131 +510,148 @@ export function CreativeAgent({
             initial={{ x: -300, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
-            className="fixed md:relative inset-y-0 left-0 w-[280px] md:w-[300px] bg-white border-r border-stone-100 z-[60] md:z-auto flex flex-col shadow-2xl md:shadow-none"
+            className="fixed lg:relative inset-y-0 left-0 w-[260px] md:w-[280px] bg-white border-r border-stone-100 z-[70] lg:z-auto flex flex-col shadow-2xl lg:shadow-none"
           >
-            <div className="p-6 space-y-6">
-              <div className="flex items-center justify-between">
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between lg:hidden">
                 <Logo />
                 <button 
                   onClick={() => setShowHistory(false)}
-                  className="p-2 hover:bg-stone-50 rounded-xl transition-colors border border-stone-100"
+                  className="p-1.5 hover:bg-stone-50 rounded-lg transition-colors border border-stone-100"
                   title="Đóng lịch sử"
                 >
-                  <X className="w-5 h-5 text-stone-600" />
+                  <X className="w-4 h-4 text-stone-600" />
                 </button>
               </div>
 
               <div className="flex gap-2">
                 <button
                   onClick={startNewChat}
-                  className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white py-3.5 rounded-2xl font-bold text-[11px] uppercase tracking-widest hover:bg-stone-800 transition-all shadow-lg active:scale-95"
+                  className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white py-3 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-stone-800 transition-all shadow-md active:scale-95"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   Hội thoại mới
                 </button>
                 <button
                   onClick={() => setShowDeleteConfirm('all')}
-                  className="px-4 bg-red-50 text-red-500 border border-red-100 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-all active:scale-95 shadow-sm"
+                  className="px-3 bg-red-50 text-red-500 border border-red-100 rounded-xl flex items-center justify-center hover:bg-red-100 transition-all active:scale-95 shadow-sm"
                   title="Xoá tất cả lịch sử"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400" />
                 <input
                   type="text"
                   placeholder="Tìm kiếm..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-stone-100 rounded-xl py-2.5 pl-10 pr-4 text-xs focus:outline-none focus:border-stone-900 transition-all"
+                  className="w-full bg-white border border-stone-100 rounded-xl py-2 pl-9 pr-4 text-[11px] focus:outline-none focus:border-stone-900 transition-all"
                 />
               </div>
             </div>
 
-                    <div className="flex-1 overflow-y-auto px-3 space-y-4 no-scrollbar">
-              <div className="space-y-1">
-                <p className="px-3 text-[9px] font-bold text-stone-400 uppercase tracking-widest mb-2">Hội thoại</p>
-                {filteredConversations.map((conv) => (
-                  <div key={conv.id} className="group relative">
-                    <button
-                      onClick={() => setActiveConversationId(conv.id)}
-                      className={cn(
-                        "w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left",
-                        activeConversationId === conv.id 
-                          ? "bg-white shadow-sm border border-stone-100" 
-                          : "hover:bg-stone-100/50"
-                      )}
-                    >
-                      <MessageSquare className={cn(
-                        "w-4 h-4 shrink-0",
-                        activeConversationId === conv.id ? "text-stone-900" : "text-stone-400"
-                      )} />
-                      <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          "text-xs font-bold truncate",
-                          activeConversationId === conv.id ? "text-stone-900" : "text-stone-600"
-                        )}>
-                          {conv.title}
-                        </p>
-                        <p className="text-[9px] text-stone-400 font-medium">
-                          {conv.updatedAt?.toDate ? conv.updatedAt.toDate().toLocaleDateString() : new Date(conv.updatedAt).toLocaleDateString()}
-                        </p>
+            <div className="flex-1 overflow-y-auto px-3 space-y-6 no-scrollbar pb-6 mt-1">
+              <div className="space-y-2">
+                <p className="text-[9px] font-bold text-stone-400 uppercase tracking-[0.2em] px-1">Gần đây</p>
+                {filteredConversations.length === 0 ? (
+                  <p className="text-[11px] text-stone-400 italic px-1">Chưa có lịch sử.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {filteredConversations.map((conv) => (
+                      <div key={conv.id} className="group relative">
+                        <button
+                          onClick={() => {
+                            setActiveConversationId(conv.id);
+                            if (window.innerWidth < 1024) setShowHistory(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-start gap-2.5 p-2.5 rounded-xl transition-all text-left border",
+                            activeConversationId === conv.id 
+                              ? "bg-white border-stone-200 shadow-sm" 
+                              : "bg-transparent border-transparent hover:bg-stone-50 hover:border-stone-100"
+                          )}
+                        >
+                          <div className={cn(
+                            "mt-0.5 p-1 rounded-md transition-colors",
+                            activeConversationId === conv.id ? "bg-stone-100 text-stone-900" : "bg-transparent text-stone-400 group-hover:bg-stone-200 group-hover:text-stone-700"
+                          )}>
+                            <MessageSquare className="w-3 h-3" />
+                          </div>
+                          <div className="flex-1 min-w-0 pr-6">
+                            <p className={cn(
+                              "text-xs font-medium leading-tight truncate transition-colors",
+                              activeConversationId === conv.id ? "text-stone-900 font-semibold" : "text-stone-600 group-hover:text-stone-900"
+                            )}>
+                              {conv.title}
+                            </p>
+                            <p className="text-[9px] text-stone-400 mt-0.5 uppercase tracking-wider">
+                              {conv.updatedAt?.toDate ? conv.updatedAt.toDate().toLocaleDateString() : new Date(conv.updatedAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </button>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              renameConversation(conv.id, conv.title);
+                            }}
+                            className="p-1.5 text-stone-400 hover:text-stone-900 transition-all rounded-lg hover:bg-white border border-transparent shadow-sm hover:border-stone-200 bg-white md:bg-transparent"
+                            title="Đổi tên cuộc hội thoại"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowDeleteConfirm(conv.id);
+                            }}
+                            className="p-1.5 text-red-400/70 hover:text-red-600 transition-all rounded-lg hover:bg-white border border-transparent shadow-sm hover:border-red-200 bg-white md:bg-transparent"
+                            title="Xoá cuộc hội thoại"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </button>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          renameConversation(conv.id, conv.title);
-                        }}
-                        className="p-1.5 text-stone-400 hover:text-stone-900 transition-all rounded-md hover:bg-white border border-transparent hover:border-stone-100 shadow-sm"
-                        title="Đổi tên cuộc hội thoại"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowDeleteConfirm(conv.id);
-                        }}
-                        className="p-1.5 text-red-400/50 hover:text-red-500 transition-all rounded-md hover:bg-red-50 border border-transparent hover:border-red-100 shadow-sm"
-                        title="Xoá cuộc hội thoại"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
 
               {creationHistory.length > 0 && (
-                <div className="space-y-1 pt-2">
-                  <div className="px-3 flex items-center justify-between mb-2">
-                    <p className="text-[9px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
-                      <History className="w-3 h-3" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                      <History className="w-3.5 h-3.5" />
                       Bản thảo sáng tạo
                     </p>
                     <button 
                       onClick={handleClearAllHistory}
-                      className="text-[9px] font-bold text-red-400 hover:text-red-600 transition-colors flex items-center gap-1 group/clear"
+                      className="text-[10px] font-bold text-red-400 hover:text-red-600 transition-colors flex items-center gap-1 group/clear bg-red-50/50 hover:bg-red-50 px-2 py-1 rounded-md"
                       title="Xoá tất cả bản thảo"
                     >
                       <Trash2 className="w-3 h-3 group-hover/clear:scale-110 transition-transform" />
+                      Xóa
                     </button>
                   </div>
                   <div className="space-y-2">
                     {creationHistory.map((h, i) => (
-                      <div key={h.id || i} className="group relative px-3">
+                      <div key={h.id || i} className="group relative">
                         <button
                           onClick={() => handleSelectFromHistory(h)}
-                          className="w-full flex flex-col gap-1 p-3 rounded-xl bg-orange-50/50 border border-orange-100/50 hover:bg-orange-50 hover:border-orange-200 transition-all text-left"
+                          className="w-full flex items-center gap-3 p-3 rounded-2xl bg-orange-50/30 border border-orange-100/50 hover:bg-orange-50 hover:border-orange-200 transition-all text-left"
                         >
-                          <p className="text-[11px] font-bold text-stone-900 line-clamp-1">{h.recipe.title}</p>
-                          <p className="text-[9px] text-orange-600 font-bold uppercase tracking-widest">
-                            {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe.totalCost || 0)}
-                          </p>
+                           <div className="p-2 bg-orange-100/50 text-orange-600 rounded-lg">
+                             <Sparkles className="w-3.5 h-3.5" />
+                           </div>
+                           <div className="flex-1 min-w-0 pr-8">
+                            <p className="text-[13px] font-medium text-stone-900 truncate leading-snug">{h.recipe.title}</p>
+                            <p className="text-[10px] text-orange-600 font-bold uppercase tracking-widest mt-1">
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(h.recipe.totalCost || 0)}
+                            </p>
+                           </div>
                         </button>
                         <button
                           onClick={(e) => {
@@ -631,45 +692,49 @@ export function CreativeAgent({
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative min-w-0 bg-stone-50/30">
-        <header className="px-6 py-4 border-b border-stone-100 bg-white/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-20">
+      <main className="flex-1 flex flex-col min-w-0 bg-white overflow-hidden h-full relative">
+        <header className="h-16 px-4 md:px-12 border-b border-stone-100 bg-white z-30 flex-shrink-0 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
-            {!showHistory && (
-              <button 
-                onClick={() => setShowHistory(true)}
-                className="p-2.5 bg-stone-900 text-white rounded-xl transition-all shadow-lg active:scale-95 flex items-center gap-2"
-              >
-                <Menu className="w-5 h-5" />
-                <span className="text-[10px] font-bold uppercase tracking-widest hidden sm:inline">Lịch sử</span>
-              </button>
-            )}
-            <div className="space-y-0.5">
-              <h1 className="text-lg font-display font-bold text-stone-900 tracking-tight">GemAgent</h1>
-              <p className="text-stone-400 text-[9px] font-bold uppercase tracking-[0.2em]">Sáng tạo • Branding • Content</p>
+            <button 
+              onClick={() => setShowHistory(true)}
+              className="lg:hidden w-10 h-10 rounded-xl bg-white border border-stone-100 flex items-center justify-center shadow-sm pointer-events-auto"
+            >
+              <Menu className="w-5 h-5 text-stone-400" />
+            </button>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2 group pointer-events-auto">
+                <h1 className="font-display font-semibold text-xl text-stone-900">
+                  {conversations.find(c => c.id === activeConversationId)?.title || "GemAgent Sáng tạo"}
+                </h1>
+              </div>
+              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-stone-300">Đã đồng bộ • GemAgent V2.5</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             {activeConversationId && (
               <button 
                 onClick={() => setShowDeleteConfirm(activeConversationId)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-100 transition-all active:scale-95"
+                className="w-10 h-10 rounded-full hover:bg-stone-50 text-stone-300 hover:text-stone-900 transition-all flex items-center justify-center"
+                title="Xoá hội thoại"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Xoá</span>
+                <Trash2 className="w-4 h-4" />
               </button>
             )}
-            <div className="hidden md:flex items-center gap-2 bg-stone-50 px-3 py-2 rounded-xl border border-stone-100">
-              <Bot className="w-3.5 h-3.5 text-stone-400" />
-              <span className="text-[10px] font-bold text-stone-600 truncate max-w-[120px]">{AVAILABLE_MODELS.find(m => m.id === preferences.selectedModelId)?.name}</span>
-            </div>
-            <div className="w-10 h-10 bg-stone-900 rounded-xl flex items-center justify-center shadow-lg shadow-stone-200">
-              <Palette className="w-5 h-5 text-white" />
+            <div className="relative hidden md:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-300" />
+              <input
+                type="text"
+                placeholder="Tìm nội dung..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-stone-50 border-none rounded-full py-2 pl-9 pr-4 text-[10px] font-bold uppercase tracking-widest focus:ring-1 focus:ring-stone-200 transition-all w-48"
+              />
             </div>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6 no-scrollbar">
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 no-scrollbar relative z-0">
           {messages.length === 0 && !activeConversationId ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto">
               <div className="w-20 h-20 bg-stone-900 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-stone-200 mb-4">
@@ -867,8 +932,8 @@ export function CreativeAgent({
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-4 md:p-6 bg-white/80 backdrop-blur-xl border-t border-stone-100 sticky bottom-0 z-30">
-          <div className="max-w-4xl mx-auto space-y-4">
+        <div className="p-3 md:p-4 bg-white border-t border-stone-100 z-50 flex-shrink-0">
+          <div className="max-w-4xl mx-auto space-y-3">
             <AnimatePresence>
               {attachments.length > 0 && (
                 <motion.div 

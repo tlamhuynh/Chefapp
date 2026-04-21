@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Chat session metadata",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" }
+      },
+      "required": ["userId"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Individual chat messages",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "sender": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": ["userId"]
+    },
+    "User": {
+        "title": "User",
+        "description": "User profile with preferences",
+        "type": "object",
+        "properties": {
+            "email": { "type": "string" },
+            "displayName": { "type": "string" }
+        }
+    }
+  },
+  "firestore": {
+    "/conversations/{conversationId}": {
+      "schema": { "$ref": "Conversation" },
+      "description": "User conversations"
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "Chat" },
+      "description": "Messages inside conversations"
+    },
+    "/creative_conversations/{conversationId}": {
+      "schema": { "$ref": "Conversation" },
+      "description": "Creative agent conversations"
+    },
+    "/creative_chats/{chatId}": {
+      "schema": { "$ref": "Chat" },
+      "description": "Messages inside creative conversations"
+    },
+    "/recipes/{recipeId}": {
+      "schema": { "$ref": "Recipe" },
+      "description": "User saved recipes"
+    },
+    "/inventory/{inventoryId}": {
+      "schema": { "$ref": "Inventory" },
+      "description": "User saved ingredients"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User settings"
+    },
+    "/food_images/{imageId}": {
+        "schema": { "title": "Image", "type": "object", "properties": { "userId": {"type": "string"} } },
+        "description": "User generated images"
+    }
+  }
+}

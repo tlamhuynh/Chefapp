@@ -5,6 +5,8 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { LogIn, ChefHat, Sparkles, Key, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo, LogoText } from './components/Logo';
+import { subscribeToDatabaseChanges } from './lib/idb-firestore';
+import { performAutoBackup } from './hooks/useDriveBackup';
 
 // Lazy load feature components to reduce initial bundle size for production
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
@@ -32,7 +34,7 @@ export default function App() {
     chatUserBubbleColor: 'bg-stone-900',
     chatAiBubbleColor: 'bg-white',
     chatBackground: 'bg-stone-50',
-    selectedModelId: 'gemini-flash-latest',
+    selectedModelId: 'gemini-2.0-flash',
     showInternalThoughts: true,
     darkMode: false,
     openaiKey: '',
@@ -40,8 +42,18 @@ export default function App() {
     googleKey: '',
     openrouterKey: '',
     nvidiaKey: '',
-    groqKey: ''
+    GroqKey: '',
+    autoBackup: false
   });
+  
+  // Initialize preferences with autoBackup
+  useEffect(() => {
+    setPreferences(prev => ({
+      ...prev,
+      autoBackup: localStorage.getItem('auto_backup_enabled') === 'true'
+    }));
+  }, []);
+
   const [showSetup, setShowSetup] = useState(false);
   const [creativeActiveId, setCreativeActiveId] = useState<string | null>(localStorage.getItem('last_creative_conv_id'));
 
@@ -52,6 +64,24 @@ export default function App() {
       localStorage.removeItem('last_creative_conv_id');
     }
   }, [creativeActiveId]);
+
+  // Handle AUTO BACKUP hook with a 30s debounce
+  useEffect(() => {
+    let timeoutId: any;
+    const unsub = subscribeToDatabaseChanges(() => {
+      if (preferences.autoBackup) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+           performAutoBackup();
+        }, 10000); // Wait 10 seconds after last write to trigger sync
+      }
+    });
+    return () => {
+      unsub();
+      clearTimeout(timeoutId);
+    };
+  }, [preferences.autoBackup]);
+
   const [generatorState, setGeneratorState] = useState<any>({
     theme: '',
     ingredients: [],
@@ -118,7 +148,8 @@ export default function App() {
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const { signInWithGoogleDeviceAware } = await import('./lib/auth-native');
+      await signInWithGoogleDeviceAware();
     } catch (error: any) {
       console.error("Login failed", error);
       let msg = "Đăng nhập thất bại. Vui lòng thử lại.";
@@ -127,7 +158,9 @@ export default function App() {
       } else if (error.code === 'auth/unauthorized-domain') {
         msg = "Tên miền này chưa được cấp phép trong Firebase Console.";
       } else if (error.message?.includes('requested action is invalid')) {
-        msg = "Lỗi cấu hình Firebase (Action Invalid). Vui lòng kiểm tra SHA-1 (cho APK) hoặc Authorized Domains.";
+        msg = "Lỗi cấu hình Firebase. Vui lòng kiểm tra SHA-1 (cho APK) hoặc Authorized Domains.";
+      } else if (error.message?.includes('DEVELOPER_WARNING')) {
+         msg = "Lỗi cấu hình API Google (Developer Warning). Vui lòng kiểm tra SHA-1 trên Firebase đã đúng với file APK chứa trong debug.keystore chưa.";
       }
       alert(msg);
     }

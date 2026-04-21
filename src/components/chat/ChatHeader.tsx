@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, Search, Trash2, Globe, Pencil } from 'lucide-react';
+import { Menu, Search, Trash2, Globe, Pencil, Plus } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { ConversationData } from '../../types/chat';
 
@@ -18,6 +18,7 @@ interface ChatHeaderProps {
   setSearchQuery: (query: string) => void;
   isRecipeCrawActive: boolean;
   setIsRecipeCrawActive: (active: boolean) => void;
+  createNewConversation: () => void;
 }
 
 export function ChatHeader({
@@ -34,7 +35,8 @@ export function ChatHeader({
   searchQuery,
   setSearchQuery,
   isRecipeCrawActive,
-  setIsRecipeCrawActive
+  setIsRecipeCrawActive,
+  createNewConversation
 }: ChatHeaderProps) {
   return (
     <header className="h-16 px-4 md:px-12 flex items-center justify-between z-30 sticky top-0 bg-white/10 backdrop-blur-sm">
@@ -79,6 +81,13 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-2 pointer-events-auto">
+        <button 
+          onClick={() => createNewConversation()}
+          title="Tạo phiên mới"
+          className="w-10 h-10 rounded-xl bg-neutral-900 text-white flex items-center justify-center hover:bg-neutral-800 transition-all shadow-sm"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
         <button 
           onClick={() => setIsRecipeCrawActive(!isRecipeCrawActive)}
           title="Thu thập công thức từ URL"
