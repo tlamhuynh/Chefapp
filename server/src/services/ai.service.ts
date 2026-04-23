@@ -41,9 +41,11 @@ export class AIService {
       system: systemInstruction,
       messages: formattedMessages,
       tools: {
+        //@ts-ignore
         search_market_price: tool({
           description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
           parameters: z.object({ ingredients: z.array(z.string()) }),
+          //@ts-ignore
           execute: async ({ ingredients }: { ingredients: string[] }) => {
             const data = await searchMarketPrices(ingredients);
             return JSON.stringify(data);

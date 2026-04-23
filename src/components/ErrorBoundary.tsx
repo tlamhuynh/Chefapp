@@ -61,7 +61,7 @@ class ErrorBoundary extends Component<Props, State> {
             Tải lại trang
           </button>
           {/* Chỉ hiển thị chi tiết lỗi ở môi trường dev */}
-          {process.env.NODE_ENV === 'development' && this.state.error && (
+          {import.meta.env.DEV && this.state.error && (
             <details style={{ marginTop: '1rem', textAlign: 'left', fontSize: '0.8rem' }}>
               <summary>Chi tiết lỗi (Dev only)</summary>
               <pre>{this.state.error.toString()}</pre>

@@ -302,11 +302,13 @@ async function startServer() {
         system: systemInstruction,
         messages: formattedMessages,
         tools: {
+          //@ts-ignore
           search_market_price: tool({
             description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
             parameters: z.object({
               ingredients: z.array(z.string()).describe("Một mảng chứa tên các nguyên liệu cần tra cứu giá")
             }),
+            //@ts-ignore
             execute: async ({ ingredients }) => JSON.stringify(await searchMarketPrices(ingredients))
           })
         },
