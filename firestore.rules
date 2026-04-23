@@ -66,6 +66,10 @@ service cloud.firestore {
       allow update: if isOwner(userId) && isValidId(userId);
     }
     
+    match /health_check/{id} {
+      allow get, list: if true;
+    }
+    
     match /food_images/{imageId} {
       allow read, delete: if isOwner(resource.data.userId) && isValidId(imageId);
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;

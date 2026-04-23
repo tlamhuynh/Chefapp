@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Plus, X, ChefHat, Clock, Utensils, AlertCircle, Save, Check, Loader2, Wand2, Package, Bot, Send, MessageSquare, History, Trash2, RefreshCw, Image as ImageIcon, Upload } from 'lucide-react';
 import { generateRecipe, refineRecipe, ChatMessage } from '../lib/gemini';

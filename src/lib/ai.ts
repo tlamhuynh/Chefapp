@@ -291,10 +291,11 @@ export async function chatWithAI(
   systemInstruction: string,
   tools?: any,
   config?: AIConfig,
-  responseSchema?: any
+  responseSchema?: any,
+  type?: 'text' | 'object' | 'multi-agent' | 'insights'
 ) {
   const formattedMessages = formatMessages(messages);
-  logger.info(`[chatWithAI] Request to ${modelId}`, { messages: formattedMessages, type: responseSchema ? 'object' : 'text' });
+  logger.info(`[chatWithAI] Request to ${modelId}`, { type: type || (responseSchema ? 'object' : 'text') });
 
   // Multi-provider routing setup
   let apiKey = '';
@@ -432,106 +433,60 @@ export async function chatWithAI(
     }
   }
 
-  // Handle Gemini directly via SDK instead of hitting the server API proxy
-  // This ensures it works purely client-side when exported as an APK or Static Website
-  if (modelId.startsWith("gemini")) {
-    let mappedModelId = modelId;
-    // Remove aggressive suffixing that caused 404s for some users
-    // The bare IDs like gemini-1.5-flash are usually sufficient and more compatible
-    if (modelId === 'gemini-3.1-flash-lite-preview' || modelId === 'gemini-3.1-pro-preview' || modelId === 'gemini-2.0-flash') {
-      mappedModelId = modelId;
+  // If not Gemini or if multi-agent/insights/object is requested, prefer server proxy
+  if (!modelId.startsWith("gemini") || type || responseSchema) {
+    logger.info(`[chatWithAI] Calling server proxy for ${modelId}${type ? ` (type: ${type})` : ''}`);
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelId,
+        messages: formattedMessages,
+        systemInstruction,
+        type: type || (responseSchema ? 'object' : 'text'),
+        // No longer sending config/keys to server for security (P0 #3)
+        ...(type === 'multi-agent' ? { inventoryData: tools?.inventory, recipeData: tools?.recipes } : {}),
+        ...(type === 'insights' ? { inventory: tools?.inventory, recipes: tools?.recipes } : {})
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(errorData.error || `AI request failed: ${response.status}`);
     }
 
-    logger.info(`[chatWithAI] Using Direct Client SDK for Gemini: ${mappedModelId}`);
-    try {
-      const gApiKey = config?.googleKey || process.env.GEMINI_API_KEY || "";
-      if (!gApiKey) throw new Error("Missing Gemini API Key");
-      
-      const genAIClient = new GoogleGenAI({ apiKey: gApiKey });
-      const geminiMessages = convertToGeminiMessages(formattedMessages);
-      
-      const res = await genAIClient.models.generateContent({
-        model: mappedModelId,
-        contents: geminiMessages,
-        config: {
-          systemInstruction: systemInstruction || undefined,
-          temperature: 0.7,
-          responseMimeType: responseSchema ? "application/json" : undefined,
-          responseSchema: responseSchema
-        }
-      });
-      
-      const contentStr = res.text || '{}';
-      
-      if (responseSchema) {
-        return robustParseJson(contentStr);
-      }
-      
-      return { text: contentStr };
-    } catch (e: any) {
-      logger.error(`[chatWithAI] Direct Gemini fetch failed`, { error: e.message, raw: e });
-      let errorMessage = e.message || String(e);
-      if (errorMessage.toLowerCase().includes("high demand") || errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-        errorMessage = "Hệ thống AI hiện đang quá tải (High Demand). Vui lòng thử lại sau ít phút hoặc đổi sang model khác trong Cài đặt.";
-      } else if (errorMessage.includes("404") || errorMessage.includes("NOT_FOUND")) {
-        errorMessage = `Model "${mappedModelId}" không tìm thấy hoặc chưa được hỗ trợ với cấu hình API Key này.`;
-      }
-      throw new Error(errorMessage);
+    const result = await response.json();
+    if (type === 'multi-agent' || type === 'insights' || responseSchema) {
+      return result.object;
     }
+    return { text: result.text, functionCalls: result.toolCalls };
   }
 
-  // Call server-side proxy to avoid CORS and keep keys secure (for non-Google or fallback)
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      modelId,
-      messages: formattedMessages,
-      systemInstruction,
-      tools,
-      config,
-      responseSchema,
-      type: responseSchema ? 'object' : 'text'
-    })
-  });
-
-  if (!response.ok) {
-    let errorData;
-    const text = await response.text();
-    try {
-      errorData = JSON.parse(text);
-    } catch {
-      errorData = { error: text.substring(0, 100) };
-    }
-    logger.error(`[chatWithAI] Error from ${modelId}`, errorData);
-    const msg = errorData.error || errorData.rawError || `AI call failed (HTTP ${response.status})`;
+  // Handle Gemini directly via SDK (only for simple text chat when direct access is preferred)
+  logger.info(`[chatWithAI] Using Direct Client SDK for Gemini: ${modelId}`);
+  try {
+    const geminiMessages = convertToGeminiMessages(formattedMessages);
+    const res = await googleAI.models.generateContent({
+      model: modelId,
+      contents: geminiMessages,
+      config: {
+        systemInstruction: systemInstruction || undefined,
+        temperature: 0.7,
+      }
+    });
     
-    // Auto-fallback mechanism
-    if (response.status === 429 || response.status === 504) {
-      const fallbackModel = 'gemini-2.0-flash';
-      if (!modelId.includes('flash') && modelId !== fallbackModel) {
-        logger.warn(`[chatWithAI] Model ${modelId} failed with ${response.status}, auto-falling back to ${fallbackModel}...`);
-        return chatWithAI(fallbackModel, messages, systemInstruction, tools, config, responseSchema);
-      }
+    return { text: res.text || "" };
+  } catch (e: any) {
+    logger.error(`[chatWithAI] Direct Gemini SDK fetch failed`, { error: e.message, raw: e });
+    
+    // As a last resort, if direct SDK fails, try the server proxy if not Capacitor
+    if (!isCapacitor) {
+      logger.info(`[chatWithAI] Retrying via server proxy after direct SDK failure...`);
+      return chatWithAI(modelId, messages, systemInstruction, tools, config, responseSchema, type || 'text');
     }
-
-    throw new Error(`[${response.status}] ${msg}`);
+    
+    throw e;
   }
-
-  const result = await response.json();
-  logger.debug(`[chatWithAI] Response from ${modelId}`, result);
-  
-  if (responseSchema) {
-    return result.object;
-  }
-
-  return {
-    text: result.text,
-    functionCalls: result.toolCalls?.map((tc: any) => ({
-      name: tc.toolName,
-      args: tc.args
-    }))
-  };
 }
 
 /**
@@ -546,107 +501,19 @@ export async function multiAgentChat(
   inventoryData?: any[],
   recipeData?: any[]
 ) {
-  const formattedMessages = formatMessages(messages);
-  logger.info(`[multiAgentChat] Request to ${modelId} from Frontend`, { type: 'multi-agent' });
-
-  // Agent 1: Creative Chef
-  const creativePrompt = `
-    ${systemInstruction}
-    BẠN LÀ CREATIVE CHEF AGENT.
-    Nhiệm vụ: Đề xuất các món ăn, thực đơn hoặc giải pháp sáng tạo.
-    Hãy tập trung vào hương vị, trải nghiệm khách hàng và sự độc đáo.
-  `;
-  
-  logger.info(`[multiAgentChat] Calling Creative Agent`);
-  let proposal = "";
-  try {
-    const res1 = await chatWithAI(modelId, formattedMessages, creativePrompt, undefined, config);
-    proposal = res1.text || "";
-  } catch(e) {
-    logger.error("Creative Agent failed", e);
-    throw e;
-  }
-
-  // Agent 2: Financial
-  const financialPrompt = `
-    BẠN LÀ FINANCIAL & INVENTORY EXPERT.
-    Dữ liệu kho hiện tại: ${JSON.stringify(inventoryData?.slice(0, 20) || [])}
-    Dữ liệu công thức hiện tại: ${JSON.stringify(recipeData?.slice(0, 10) || [])}
-    Nhiệm vụ: Phân tích đề xuất của Creative Chef dưới góc độ chi phí và khả năng thực thi.
-    Đề xuất của Creative Chef: "${proposal}"
-  `;
-  
-  logger.info(`[multiAgentChat] Calling Financial Agent`);
-  let review = "";
-  try {
-    const res2 = await chatWithAI(modelId, [{ role: 'user', content: "Hãy phân tích đề xuất trên." }], financialPrompt, undefined, config);
-    review = res2.text || "";
-  } catch(e) {
-    logger.error("Financial Agent failed", e);
-    // If it fails, we fall through orchestrator with empty review
-    review = "Khả năng phân tích tài chính tạm thời không khả dụng.";
-  }
-
-  // Agent 3: Orchestrator
-  const orchestratorPrompt = `
-    BẠN LÀ BẾP TRƯỞNG ĐIỀU PHỐI (ORCHESTRATOR).
-    Dưới đây là cuộc thảo luận nội bộ giữa Creative Chef và Financial Expert:
-    - Sáng tạo: ${proposal}
-    - Phản biện tài chính: ${review}
-    
-    Nhiệm vụ: Tổng hợp câu trả lời cuối cùng cho người dùng và ĐỀ XUẤT CÁC HÀNH ĐỘNG THỰC THI (proposedActions), kèm theo cấu trúc công thức (recipe) và gợi ý (suggestions) nếu phù hợp.
-    
-    QUY TẮC TRẢ LỜI:
-    1. TRONG TRƯỜNG 'text': Trình bày câu trả lời dưới dạng Markdown đẹp. KHÔNG ĐƯỢC trả về nguyên khối JSON trong phần này. Nếu có danh sách nguyên liệu, hãy dùng định dạng BẢNG (Table) Markdown để người dùng dễ theo dõi.
-    2. TRONG TRƯỜNG 'proposedActions': Đây là nơi chứa dữ liệu máy tính đọc được để thực thi hành động. PHẢI TRẢ VỀ mảng này nếu có hành động cần thiết (ví dụ: tạo công thức mới theo sáng tạo).
-    3. TRONG TRƯỜNG 'recipe': Gửi kèm thông tin công thức theo cấu trúc chi tiết (mảng nguyên liệu, hướng dẫn) ĐỂ HIỂN THỊ LƯU NHANH TRÊN MÀN HÌNH CHAT.
-    4. TRONG TRƯỜNG 'suggestions': Các hành động gợi ý tiếp theo giúp người dùng lựa chọn.
-    
-    CÁC LOẠI HÀNH ĐỘNG HỖ TRỢ:
-    1. 'add_recipe': Thêm một công thức mới. Data CẦN THIẾT: { title, ingredients: [{name, amount, unit}], instructions }.
-    2. 'update_inventory': Cập nhật số lượng tồn kho. Data CẦN THIẾT: { name, amount }.
-    
-    Nếu thảo luận có nhắc việc tạo món mới, HÃY CUNG CẤP CẢ 'recipe' VÀ hành động 'add_recipe' để hệ thống gợi ý lưu cho người dùng.
-    
-    Hãy luôn trả về kết quả KHÔNG CÓ BẤT KỲ ĐOẠN TEXT GÌ BÊN NGOÀI, CHỈ TRẢ VỀ JSON HỢP LỆ THEO ĐÚNG CẤU TRÚC SAU:
-    { "text": "Câu trả lời cuối...", "internalMonologue": "Tóm tắt 1 câu", "recipe": { "title": "Tên món", "time": "30p", "ingredients": [{ "name": "...", "amount": "...", "unit": "..." }], "instructions": ["b1", "b2"], "notes": "" }, "suggestions": [{ "label": "Lưu công thức", "action": "save_recipe" }, { "label": "Gợi ý nguyên liệu mua thêm", "action": "suggest_buy" }] }
-  `;
-
-  logger.info(`[multiAgentChat] Calling Orchestrator`);
-  const responseSchema = z.object({
-    text: z.string(),
-    internalMonologue: z.string().optional(),
-    proposedActions: z.array(z.object({
-      type: z.string(),
-      data: z.any(),
-      reason: z.string().optional()
-    })).optional(),
-    recipe: z.object({
-      title: z.string(),
-      description: z.string().optional(),
-      time: z.string().optional(),
-      difficulty: z.string().optional(),
-      ingredients: z.array(z.object({ name: z.string(), amount: z.union([z.string(), z.number()]).optional(), unit: z.string().optional() })).optional(),
-      instructions: z.array(z.string()).optional(),
-      notes: z.string().optional()
-    }).optional(),
-    suggestions: z.array(z.object({ label: z.string(), action: z.string() })).optional()
-  });
-
-  return await chatWithAI(
+  return chatWithAI(
     modelId,
-    [{ role: 'user', content: "Hãy đưa ra kết quả cuối cùng dưới dạng JSON chứa các trường: text, internalMonologue, proposedActions, recipe, suggestions." }],
-    orchestratorPrompt,
-    undefined,
+    messages,
+    systemInstruction,
+    { inventory: inventoryData, recipes: recipeData },
     config,
-    responseSchema
+    undefined,
+    'multi-agent'
   );
 }
 
 /**
  * Proactive Insight Agent (Feature #4)
- * Runs in background to find optimizations
- * Now calls Gemini directly from frontend to avoid server-side proxy limits
  */
 export async function generateProactiveInsights(
   modelId: string,
@@ -654,103 +521,15 @@ export async function generateProactiveInsights(
   recipes: any[],
   config?: AIConfig
 ) {
-  logger.info(`[generateProactiveInsights] Request to ${modelId}`, { type: 'insights' });
-  
-  // Use Gemini SDK directly in frontend if it's a Google model
-  if (modelId.includes('gemini') || modelId.includes('google')) {
-    try {
-      // Map to most stable IDs only if necessary, otherwise use original
-      let mappedModelId = modelId.startsWith('gemini') ? modelId : 'gemini-2.0-flash';
-
-      const systemPrompt = `
-        BẠN LÀ KITCHEN INTELLIGENCE AGENT (TRUY XUẤT TỪ GEMINI ${modelId}).
-        Nhiệm vụ: Phân tích dữ liệu kho và công thức để tìm ra các cơ hội tối ưu hóa.
-        Dữ liệu kho: ${JSON.stringify(inventory.slice(0, 30))}
-        Dữ liệu công thức: ${JSON.stringify(recipes.slice(0, 20))}
-        
-        TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON SAU:
-        {
-          "insights": [
-            { "title": "string", "description": "string", "type": "warning|tip|alert", "priority": "high|medium|low" }
-          ]
-        }
-      `;
-
-      const gApiKey = config?.googleKey || process.env.GEMINI_API_KEY || "";
-      const tempGenAI = new GoogleGenAI({ apiKey: gApiKey });
-      
-      const response = await tempGenAI.models.generateContent({
-        model: mappedModelId,
-        contents: [{ role: 'user', parts: [{ text: "Phân tích dữ liệu ngay và trả về JSON." }] }],
-        config: {
-          systemInstruction: systemPrompt,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              insights: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    priority: { type: Type.STRING }
-                  },
-                  required: ["title", "description", "type", "priority"]
-                }
-              }
-            },
-            required: ["insights"]
-          }
-        }
-      });
-
-      const responseText = response.text;
-      
-      if (!responseText) {
-        throw new Error("Gemini returned empty text");
-      }
-
-      return robustParseJson(responseText);
-    } catch (error: any) {
-      logger.error(`[generateProactiveInsights] Gemini frontend call failed`, { error: error.message, raw: error });
-      let errorMessage = error.message || String(error);
-      if (errorMessage.toLowerCase().includes("high demand") || errorMessage.includes("429") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
-        errorMessage = "Hệ thống AI hiện đang quá tải (High Demand). Vui lòng thử lại sau ít phút.";
-      } else if (errorMessage.includes("404") || errorMessage.includes("NOT_FOUND")) {
-        errorMessage = `Model "${modelId}" không tìm thấy hoặc chưa được hỗ trợ với cấu hình API Key này.`;
-      }
-      throw new Error(errorMessage);
-    }
-  }
-
-  // Fallback to existing server proxy (for Groq/OpenAI or if frontend fails)
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      modelId,
-      messages: [],
-      systemInstruction: "", // Handled server-side for this type
-      config,
-      inventory,
-      recipes,
-      type: 'insights'
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    logger.error(`[generateProactiveInsights] Error from ${modelId}`, errorData);
-    const msg = errorData.error || `Insights call failed`;
-    throw new Error(`[${response.status}] ${msg}`);
-  }
-
-  const result = await response.json();
-  logger.debug(`[generateProactiveInsights] Response from ${modelId}`, result);
-  return result.object;
+  return chatWithAI(
+    modelId,
+    [],
+    "",
+    { inventory, recipes },
+    config,
+    undefined,
+    'insights'
+  );
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, collection, auth, addDoc, serverTimestamp, doc, updateDoc, setDoc, handleFirestoreError, OperationType } from '../lib/firebase';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChefHat, Sparkles, MessageSquare, Plus, Cpu, AlertCircle, User } from 'lucide-react';
@@ -190,7 +190,7 @@ export function ChefChat({ preferences, updatePreference, setActiveTab }: ChefCh
 
     const validFiles: {data: string, mimeType: string, name: string}[] = [];
     
-    for (const file of Array.from(files)) {
+    for (const file of Array.from(files) as File[]) {
       if (file.size > MAX_SIZE) {
         setFileError(`File "${file.name}" exceeds 10MB limit.`);
         continue;

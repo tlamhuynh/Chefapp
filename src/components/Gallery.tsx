@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db, collection, query, where, orderBy, onSnapshot, auth, deleteDoc, doc } from '../lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ImageIcon, Trash2, Download, ExternalLink, Search, Calendar, ChefHat } from 'lucide-react';

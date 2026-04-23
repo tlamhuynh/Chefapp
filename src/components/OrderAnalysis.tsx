@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Camera, Upload, Sparkles, ListChecks, ChevronRight } from 'lucide-react';
 import { analyzeOrderImage } from '../lib/gemini';

@@ -436,7 +436,7 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                         onClick={checkApiStatus}
                         className="w-full py-4 bg-neutral-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-all"
                       >
-                        <Loader2 className={cn("w-4 h-4", Object.values(apiStatus).some(s => s.status === 'checking') && "animate-spin")} />
+                        <Loader2 className={cn("w-4 h-4", Object.values(apiStatus as Record<string, any>).some(s => s.status === 'checking') && "animate-spin")} />
                         Kiểm tra trạng thái
                       </button>
                       <div className="space-y-3">

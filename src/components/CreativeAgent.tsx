@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { creativeAgentInstruction } from '../lib/gemini';
 import { chatWithAIWithFallback, AVAILABLE_MODELS } from '../lib/ai';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
+import { ErrorBoundary } from './ErrorBoundary';
 import { db, collection, auth, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, getDocs } from '../lib/firebase';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -735,6 +736,7 @@ export function CreativeAgent({
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 no-scrollbar relative z-0">
+          <ErrorBoundary name="CreativeAgentMessages">
           {messages.length === 0 && !activeConversationId ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto">
               <div className="w-20 h-20 bg-stone-900 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-stone-200 mb-4">
@@ -814,19 +816,29 @@ export function CreativeAgent({
                             </p>
                           </div>
                         </div>
-                        <div className="space-y-2 pt-4 border-t border-stone-50">
-                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Nguyên liệu chính</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {msg.recipe.ingredients?.slice(0, 5).map((ing: any, idx: number) => (
-                              <span key={idx} className="bg-stone-50 px-2 py-1 rounded-lg text-[10px] text-stone-600 border border-stone-100 italic">
-                                {ing.name} ({ing.amount} {ing.unit})
-                              </span>
-                            ))}
-                            {(msg.recipe.ingredients?.length || 0) > 5 && (
-                              <span className="text-[10px] text-stone-400 font-bold px-2 py-1 italic">
-                                +{(msg.recipe.ingredients?.length || 0) - 5} nữa
-                              </span>
-                            )}
+                        <div className="space-y-3 pt-4 border-t border-stone-50">
+                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Phân tích chi phí & Nguyên liệu</p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[10px] text-left">
+                              <thead>
+                                <tr className="text-stone-400 border-b border-stone-50">
+                                  <th className="pb-2 font-bold uppercase tracking-tighter">Nguyên liệu</th>
+                                  <th className="pb-2 font-bold uppercase tracking-tighter text-right">Lượng</th>
+                                  <th className="pb-2 font-bold uppercase tracking-tighter text-right text-stone-900">Ước tính (VNĐ)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-stone-50">
+                                {msg.recipe.ingredients?.map((ing: any, idx: number) => (
+                                  <tr key={idx} className="hover:bg-stone-50/50 transition-colors">
+                                    <td className="py-2 text-stone-700 font-medium">{ing.name}</td>
+                                    <td className="py-2 text-stone-500 text-right">{ing.amount} {ing.unit}</td>
+                                    <td className="py-2 text-stone-900 font-bold text-right">
+                                      {ing.price ? new Intl.NumberFormat('vi-VN').format(ing.price) : '---'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -930,6 +942,7 @@ export function CreativeAgent({
             </div>
           )}
           <div ref={messagesEndRef} />
+          </ErrorBoundary>
         </div>
 
         <div className="p-3 md:p-4 bg-white border-t border-stone-100 z-50 flex-shrink-0">
@@ -1015,7 +1028,7 @@ export function CreativeAgent({
                 multiple
                 accept="image/*,video/*,.pdf,.doc,.docx,.txt"
                 onChange={async (e) => {
-                  const files = Array.from(e.target.files || []);
+                  const files = Array.from(e.target.files || []) as File[];
                   for (const file of files) {
                     const reader = new FileReader();
                     reader.onloadend = () => {
