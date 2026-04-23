@@ -18,6 +18,8 @@ import { getDatabase } from './database/factory';
 const app = express();
 const db = getDatabase();
 
+app.set('trust proxy', 1);
+
 // Middlewares
 app.use(helmet({ 
   contentSecurityPolicy: false,

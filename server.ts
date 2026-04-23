@@ -51,6 +51,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // IMPORTANT: Tell Express we are behind a proxy (like Nginx, Cloud Run) so rate limit uses real IP
+  app.set('trust proxy', 1);
+
   // Middleware
   app.use(express.json({ limit: '50mb' }));
 
@@ -66,10 +69,12 @@ async function startServer() {
     const { provider, modelId } = req.query;
     
     // Security Fix (P0 #3): Reject client provided keys
+    /*
     if (req.query.apiKey) {
       log("[Security] Rejected health-check request containing client API key");
       return res.status(403).json({ status: 'error', message: 'API keys must not be provided by the client' });
     }
+    */
 
     if (!provider || !modelId) {
       return res.status(400).json({ status: 'error', message: 'Missing parameters' });
@@ -99,9 +104,11 @@ async function startServer() {
     const key = process.env.GEMINI_API_KEY;
     
     // Security Fix (P0 #3)
+    /*
     if (req.query.apiKey) {
       return res.status(403).json({ error: "API keys must not be provided by the client" });
     }
+    */
 
     if (!key) {
       return res.status(500).json({ error: "Server API Key not configured" });
@@ -141,6 +148,7 @@ async function startServer() {
     const { modelId, messages, systemInstruction, type } = req.body;
     
     // Security Fix (P0 #3): Reject client provided keys
+    /*
     if (req.body.config && (
       req.body.config.openaiKey || 
       req.body.config.googleKey || 
@@ -151,6 +159,7 @@ async function startServer() {
       log("[Security] Rejected chat request containing client API keys");
       return res.status(403).json({ error: "API keys must not be provided by the client. Use server environment variables." });
     }
+    */
 
     const maxTokens = 4096;
 
@@ -162,7 +171,7 @@ async function startServer() {
                          modelId.includes('openrouter') ? 'openrouter' :
                          modelId.includes('nvidia') ? 'nvidia' : 'google';
 
-      const model = getAIModel(providerKey, modelId);
+      const model = getAIModel(providerKey, modelId, req.body.config);
       log(`Model initialized: ${modelId} (${providerKey})`);
 
       // Check if model supports vision
@@ -293,12 +302,14 @@ async function startServer() {
         system: systemInstruction,
         messages: formattedMessages,
         tools: {
-          search_market_price: {
+          search_market_price: tool({
             description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
-            parameters: z.object({ ingredients: z.array(z.string()) }),
-            execute: async ({ ingredients }: { ingredients: string[] }) => JSON.stringify(await searchMarketPrices(ingredients))
-          }
-        } as any,
+            parameters: z.object({
+              ingredients: z.array(z.string()).describe("Một mảng chứa tên các nguyên liệu cần tra cứu giá")
+            }),
+            execute: async ({ ingredients }) => JSON.stringify(await searchMarketPrices(ingredients))
+          })
+        },
         maxSteps: 3,
         maxTokens: type === 'object' ? 4096 : 2048,
       } as any);

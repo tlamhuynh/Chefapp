@@ -150,17 +150,14 @@ function convertToGeminiTools(tools?: any) {
   const functionDeclarations: any[] = [];
   
   Object.entries(tools).forEach(([name, definition]: [string, any]) => {
-    // Basic conversion logic - this might need to be more robust for complex schemas
-    const parameters = definition.parameters;
-    // The SDK expects JSON schema format which matches Zod's JSON output roughly
-    functionDeclarations.push({
-      name,
-      description: definition.description,
-      parameters: parameters
-    });
+    // We cannot easily convert Zod schemas to Gemini API schemas manually here without zod-to-json-schema
+    // Instead of doing a half-baked conversion that crashes Gemini (like 'type: None'),
+    // we'll just omit tools from direct Gemini SDK calls entirely on the client,
+    // since we prefer the server proxy (which uses Vercel AI SDK that handles tool schemas natively) anyway.
+    logger.warn(`[convertToGeminiTools] Tool '${name}' ignored in client SDK fallback to prevent schema crash.`);
   });
   
-  return [{ functionDeclarations }];
+  return functionDeclarations.length > 0 ? [{ functionDeclarations }] : undefined;
 }
 
 // Helper to robustly parse JSON from AI responses

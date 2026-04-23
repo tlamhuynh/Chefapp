@@ -1,11 +1,11 @@
 import { useState, useEffect, Suspense, lazy } from 'react';
 import { auth, onAuthStateChanged, User, signInWithPopup, googleProvider, db, doc, getDoc, setDoc, testConnection, handleFirestoreError, OperationType, updateDoc, serverTimestamp } from './lib/firebase';
 import { Layout } from './components/Layout';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import ErrorBoundary from './components/ErrorBoundary';
 import { LogIn, ChefHat, Sparkles, Key, ArrowRight, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Logo, LogoText } from './components/Logo';
-import { subscribeToDatabaseChanges } from './lib/idb-firestore';
+import { subscribeToDatabaseChanges } from './lib/supabase-firestore';
 import { performAutoBackup } from './hooks/useDriveBackup';
 
 // Lazy load feature components to reduce initial bundle size for production

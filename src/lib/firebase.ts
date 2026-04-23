@@ -2,12 +2,12 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Import Firestore mock implementation backed by IndexedDB
+// Import Firestore Supabase compatibility layer
 import {
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, getDoc, getDocs, onSnapshot,
   serverTimestamp, Timestamp, writeBatch, getDocFromServer
-} from './idb-firestore';
+} from './supabase-firestore';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -47,12 +47,11 @@ export interface FirestoreErrorInfo {
 }
 
 export const handleFirestoreError = (error: any, op: OperationType, path: string | null) => {
-  console.error(`IDB Error [${op}] at ${path}:`, error);
-  // IndexedDB won't have permission errors, so we just log and throw.
+  console.error(`Supabase DB Error [${op}] at ${path}:`, error);
   throw error;
 };
 
 export const testConnection = async () => {
-  console.log("IndexedDB locally initialized successfully.");
+  console.log("Supabase compat layer initialized successfully.");
 };
 testConnection();

@@ -132,7 +132,7 @@ export class SupabaseDBAdapter implements IDatabaseService {
   async update<T>(collection: string, id: string, data: Partial<T>): Promise<void> {
     const { error } = await this.getClient()
       .from(collection)
-      .update(data)
+      .update(data as any)
       .eq('id', id);
 
     if (error) {

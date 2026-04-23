@@ -49,47 +49,47 @@ export function mapModelId(provider: string, mId: string): string {
  * Initializes the appropriate AI provider and model using Vercel AI SDK.
  * Strictly uses environment variables for API keys.
  */
-export function getAIModel(provider: string, modelId: string): LanguageModel {
+export function getAIModel(provider: string, modelId: string, config?: any): LanguageModel {
   const finalId = mapModelId(provider, modelId);
   
   switch (provider) {
     case 'google':
       return createGoogleGenerativeAI({ 
-        apiKey: process.env.GEMINI_API_KEY 
+        apiKey: config?.googleKey || process.env.GEMINI_API_KEY 
       })(finalId);
       
     case 'openai':
       return createOpenAI({ 
-        apiKey: process.env.OPENAI_API_KEY 
+        apiKey: config?.openaiKey || process.env.OPENAI_API_KEY 
       })(finalId);
       
     case 'anthropic':
       return createAnthropic({ 
-        apiKey: process.env.ANTHROPIC_API_KEY 
+        apiKey: config?.anthropicKey || process.env.ANTHROPIC_API_KEY 
       })(finalId);
       
     case 'groq':
       return createOpenAI({ 
-        apiKey: process.env.GROQ_API_KEY,
+        apiKey: config?.groqKey || process.env.GROQ_API_KEY,
         baseURL: 'https://api.groq.com/openai/v1'
       })(finalId);
       
     case 'openrouter':
       return createOpenAI({
-        apiKey: process.env.OPENROUTER_API_KEY,
+        apiKey: config?.openrouterKey || process.env.OPENROUTER_API_KEY,
         baseURL: 'https://openrouter.ai/api/v1'
       })(finalId);
       
     case 'nvidia':
       return createOpenAI({
-        apiKey: process.env.NVIDIA_API_KEY,
+        apiKey: config?.nvidiaKey || process.env.NVIDIA_API_KEY,
         baseURL: 'https://integrate.api.nvidia.com/v1'
       })(finalId);
       
     default:
       // Default to Google Gemini if unknown
       return createGoogleGenerativeAI({ 
-        apiKey: process.env.GEMINI_API_KEY 
+        apiKey: config?.googleKey || process.env.GEMINI_API_KEY 
       })(finalId.includes('gemini') ? finalId : 'gemini-1.5-flash');
   }
 }

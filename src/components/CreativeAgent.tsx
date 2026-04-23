@@ -12,7 +12,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
-import { ErrorBoundary } from './ErrorBoundary';
+import ErrorBoundary from './ErrorBoundary';
 import { db, collection, auth, addDoc, serverTimestamp, query, where, orderBy, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, getDocs } from '../lib/firebase';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -736,7 +736,7 @@ export function CreativeAgent({
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 no-scrollbar relative z-0">
-          <ErrorBoundary name="CreativeAgentMessages">
+          <ErrorBoundary>
           {messages.length === 0 && !activeConversationId ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-6 max-w-md mx-auto">
               <div className="w-20 h-20 bg-stone-900 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-stone-200 mb-4">

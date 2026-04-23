@@ -1,9 +1,8 @@
-// @ts-nocheck
-import React from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+  children: ReactNode;
+  fallback?: ReactNode;
   name?: string;
 }
 
@@ -12,53 +11,68 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    // @ts-ignore - Persistent lint error in this environment
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+class ErrorBoundary extends Component<Props, State> {
+  public state: State = {
+    hasError: false,
+    error: null,
+  };
 
-  static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): State {
+    // Cập nhật state để lần render tiếp theo hiển thị UI dự phòng
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // @ts-ignore
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log lỗi ra console hoặc gửi đến service tracking (Sentry, v.v.)
     console.error(`[ErrorBoundary:${this.props.name || 'App'}] Uncaught error:`, error, errorInfo);
   }
 
-  render() {
-    // @ts-ignore
-    const { hasError, error } = this.state;
-    // @ts-ignore
-    const { fallback, children } = this.props;
-
-    if (hasError) {
-      if (fallback) {
-        return fallback;
+  public render() {
+    if (this.state.hasError) {
+      // Hiển thị UI dự phòng nếu có lỗi
+      if (this.props.fallback) {
+        return this.props.fallback;
       }
-
+      
       return (
-        <div className="p-6 bg-red-50 border border-red-100 rounded-3xl m-4">
-          <h2 className="text-red-900 font-bold mb-2">Đã xảy ra lỗi hệ thống</h2>
-          <p className="text-red-700 text-sm mb-4">
-            {error?.message || "Hệ thống gặp sự cố bất ngờ."}
-          </p>
-          <button
-            // @ts-ignore
-            onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest"
+        <div style={{ 
+          padding: '2rem', 
+          textAlign: 'center', 
+          fontFamily: 'sans-serif',
+          backgroundColor: '#fff5f5',
+          color: '#c53030',
+          borderRadius: '8px',
+          margin: '1rem'
+        }}>
+          <h2>Đã xảy ra lỗi không mong muốn</h2>
+          <p>Xin vui lòng thử tải lại trang.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: '1rem',
+              padding: '0.5rem 1rem',
+              cursor: 'pointer',
+              backgroundColor: '#e53e3e',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px'
+            }}
           >
-            Thử tải lại vùng này
+            Tải lại trang
           </button>
+          {/* Chỉ hiển thị chi tiết lỗi ở môi trường dev */}
+          {process.env.NODE_ENV === 'development' && this.state.error && (
+            <details style={{ marginTop: '1rem', textAlign: 'left', fontSize: '0.8rem' }}>
+              <summary>Chi tiết lỗi (Dev only)</summary>
+              <pre>{this.state.error.toString()}</pre>
+            </details>
+          )}
         </div>
       );
     }
 
-    return children;
+    return this.props.children;
   }
 }
+
+export default ErrorBoundary;

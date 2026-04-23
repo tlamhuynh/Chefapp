@@ -10,6 +10,7 @@ export interface ChatParams {
   messages: any[];
   systemInstruction?: string;
   type?: 'standard' | 'insights' | 'multi-agent' | 'object';
+  config?: any;
 }
 
 export class AIService {
@@ -17,9 +18,9 @@ export class AIService {
    * Main entry point for AI interactions
    */
   static async processChat(params: ChatParams) {
-    const { modelId, messages, systemInstruction, type } = params;
+    const { modelId, messages, systemInstruction, type, config } = params;
     const provider = this.getProviderFromModelId(modelId);
-    const model = getAIModel(provider, modelId);
+    const model = getAIModel(provider, modelId, config);
 
     logger.debug(`AIService: Processing ${type} chat with ${modelId}`);
 
@@ -40,14 +41,14 @@ export class AIService {
       system: systemInstruction,
       messages: formattedMessages,
       tools: {
-        search_market_price: {
+        search_market_price: tool({
           description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
           parameters: z.object({ ingredients: z.array(z.string()) }),
           execute: async ({ ingredients }: { ingredients: string[] }) => {
             const data = await searchMarketPrices(ingredients);
             return JSON.stringify(data);
           }
-        }
+        })
       } as any,
       maxSteps: 3,
     });

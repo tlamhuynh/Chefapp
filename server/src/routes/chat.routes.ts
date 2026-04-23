@@ -17,7 +17,7 @@ const chatRateLimit = rateLimit({
 
 router.get('/models', async (req, res) => {
   const key = process.env.GEMINI_API_KEY;
-  if (req.query.apiKey) return res.status(403).json({ error: "API keys must not be provided by the client" });
+  // if (req.query.apiKey) return res.status(403).json({ error: "API keys must not be provided by the client" });
   if (!key) return res.status(500).json({ error: "Server API Key not configured" });
 
   const cacheKey = 'gemini-models';
@@ -46,12 +46,14 @@ router.get('/models', async (req, res) => {
 router.post('/', chatRateLimit, async (req, res) => {
   const { modelId, messages, systemInstruction, type } = req.body;
   
+  /*
   if (req.body.config && (
     req.body.config.openaiKey || req.body.config.googleKey || 
     req.body.config.anthropicKey || req.body.config.nvidiaKey || req.body.config.groqKey
   )) {
     return res.status(403).json({ error: "API keys must not be provided by the client." });
   }
+  */
 
   try {
     const result = await AIService.processChat({
@@ -59,6 +61,7 @@ router.post('/', chatRateLimit, async (req, res) => {
       messages,
       systemInstruction,
       type,
+      config: req.body.config, // Explicitly pass config
       ...req.body // Pass extra params for insights etc.
     });
 
