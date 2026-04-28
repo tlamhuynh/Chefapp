@@ -163,6 +163,43 @@ async function searchMarketPrices(ingredients: string[]) {
   return results;
 }
 
+// Simple in-memory rate limiter to prevent abuse
+const rateLimitMap = new Map<string, number[]>();
+const createRateLimiter = (windowMs: number, maxRequests: number) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const ip = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+
+    let timestamps = rateLimitMap.get(ip) || [];
+    // Filter out timestamps outside the current window
+    timestamps = timestamps.filter(t => now - t < windowMs);
+
+    if (timestamps.length >= maxRequests) {
+      log(`Rate limit exceeded for IP: ${ip}`);
+      res.setHeader('Retry-After', Math.ceil((timestamps[0] + windowMs - now) / 1000));
+      return res.status(429).json({
+        error: "Hệ thống nhận được quá nhiều yêu cầu từ bạn. Vui lòng thử lại sau ít phút.",
+        message: "Too many requests. Please try again later."
+      });
+    }
+
+    timestamps.push(now);
+    rateLimitMap.set(ip, timestamps);
+    next();
+  };
+};
+
+// Periodic cleanup of rate limit map every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    // If no timestamps in the last 10 minutes, delete the entry
+    if (timestamps.every(t => now - t > 10 * 60 * 1000)) {
+      rateLimitMap.delete(ip);
+    }
+  }
+}, 10 * 60 * 1000);
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -243,8 +280,8 @@ async function startServer() {
     }
   });
 
-  // AI Chat Proxy Route
-  app.post("/api/chat", async (req, res) => {
+  // AI Chat Proxy Route - Rate limited to 15 requests per minute
+  app.post("/api/chat", createRateLimiter(60 * 1000, 15), async (req, res) => {
     const { modelId, messages, systemInstruction, tools, config, responseSchema, type } = req.body;
     const maxTokens = 4096; // Increased from default to prevent truncation
 
@@ -795,8 +832,8 @@ async function startServer() {
     }
   });
 
-  // API Route for crawling recipes
-  app.post("/api/crawl", async (req, res) => {
+  // API Route for crawling recipes - Rate limited to 10 requests per minute
+  app.post("/api/crawl", createRateLimiter(60 * 1000, 10), async (req, res) => {
     const { url } = req.body;
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
