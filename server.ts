@@ -101,17 +101,10 @@ async function startServer() {
   
   // Endpoint to list available Gemini models
   app.get("/api/list-models", async (req, res) => {
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
     
-    // Security Fix (P0 #3)
-    /*
-    if (req.query.apiKey) {
-      return res.status(403).json({ error: "API keys must not be provided by the client" });
-    }
-    */
-
-    if (!key) {
-      return res.status(500).json({ error: "Server API Key not configured" });
+    if (!key || key === 'undefined' || key === 'null' || key.length < 5) {
+      return res.status(500).json({ error: "Server API Key not configured correctly (GEMINI_API_KEY is missing or invalid)" });
     }
 
     // Cache list of models
@@ -306,7 +299,7 @@ async function startServer() {
           search_market_price: tool({
             description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam.",
             parameters: z.object({
-              ingredients: z.array(z.string()).describe("Một mảng chứa tên các nguyên liệu cần tra cứu giá")
+              ingredients: z.array(z.string().describe("Tên nguyên liệu")).describe("Mảng các nguyên liệu cần tra cứu giá")
             }),
             //@ts-ignore
             execute: async ({ ingredients }) => JSON.stringify(await searchMarketPrices(ingredients))

@@ -285,7 +285,11 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
         googleKey: preferences.googleKey,
         openrouterKey: preferences.openrouterKey,
         nvidiaKey: preferences.nvidiaKey,
-        groqKey: preferences.groqKey
+        groqKey: preferences.groqKey,
+        chefExpertise: preferences.chefExpertise,
+        chefPhilosophy: preferences.chefPhilosophy,
+        chefPassions: preferences.chefPassions,
+        chefTone: preferences.chefTone
       };
 
       // Mocking sub-agent background steps for better UX
@@ -348,10 +352,15 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
         setChatHistory([{ role: 'model', parts: [{ text: result.text }] }]);
       }
     } catch (error: any) {
-      console.error("Generation failed", error);
       let errorMsg = error.message || "Không thể tạo công thức. Vui lòng kiểm tra API Key.";
-      if (errorMsg.toLowerCase().includes('high demand') || errorMsg.includes('429')) {
-        errorMsg = "Hệ thống AI hiện đang quá tải (High Demand). Hệ thống đã thử các model dự phòng nhưng đều bận. Vui lòng thử lại sau ít phút hoặc đổi sang model khác trong Cài đặt.";
+      const lowerError = errorMsg.toLowerCase();
+      
+      if (!lowerError.includes('quota') && !lowerError.includes('limit') && !lowerError.includes('429') && !lowerError.includes('api key') && !lowerError.includes('credits')) {
+        console.error("Generation failed", error);
+      }
+      
+      if (lowerError.includes('high demand') || lowerError.includes('429') || lowerError.includes('quota') || lowerError.includes('limit') || lowerError.includes('credits')) {
+        errorMsg = "Hệ thống AI hiện đang quá tải hoặc hết hạn mức của thẻ API (Quota Exceeded). Vui lòng thử lại sau ít phút hoặc đổi sang model khác trong Cài đặt.";
       }
       setError(errorMsg);
     } finally {
@@ -381,7 +390,11 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
         googleKey: preferences.googleKey,
         openrouterKey: preferences.openrouterKey,
         nvidiaKey: preferences.nvidiaKey,
-        groqKey: preferences.groqKey
+        groqKey: preferences.groqKey,
+        chefExpertise: preferences.chefExpertise,
+        chefPhilosophy: preferences.chefPhilosophy,
+        chefPassions: preferences.chefPassions,
+        chefTone: preferences.chefTone
       };
 
       const result = await refineRecipe(generatedRecipe.recipe, currentFeedback, chatHistory, aiConfig, preferences.selectedModelId);
@@ -395,7 +408,10 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
         setChatHistory(prev => [...prev, { role: 'model', parts: [{ text: result.text }] }]);
       }
     } catch (error: any) {
-      console.error("Refinement failed", error);
+      const lowerError = (error.message || "").toLowerCase();
+      if (!lowerError.includes('quota') && !lowerError.includes('limit') && !lowerError.includes('429') && !lowerError.includes('api key') && !lowerError.includes('credits')) {
+        console.error("Refinement failed", error);
+      }
       setError("Không thể điều chỉnh công thức: " + (error.message || "Lỗi không xác định"));
     } finally {
       setIsRefining(false);
@@ -492,7 +508,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                 onChange={(e) => updatePreference('selectedModelId', e.target.value)}
                 className="bg-transparent border-none p-0 font-bold text-stone-500 group-hover:text-stone-900 uppercase tracking-widest cursor-pointer focus:ring-0 text-[8px] appearance-none transition-colors"
               >
-                {AVAILABLE_MODELS.map(m => (
+                {AVAILABLE_MODELS.filter(m => m.tags?.includes('reasoning')).map(m => (
                   <option key={m.id} value={m.id} className="text-stone-900 bg-white">
                     {m.name}
                   </option>
@@ -532,7 +548,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
               </div>
               {creationHistory.length > 0 ? (
                 <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto no-scrollbar px-1 py-1">
-                  {creationHistory.map((h, i) => (
+                  {creationHistory?.filter(h => h && h.recipe).map((h, i) => (
                     <div key={h.id || i} className="relative group">
                       <button
                         onClick={() => handleSelectFromHistory(h)}
@@ -554,19 +570,21 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                           </div>
                         </div>
                       </button>
-                      <button 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          setConfirmModal({
-                            isOpen: true,
-                            title: "Xóa bản thảo này?",
-                            onConfirm: () => handleDeleteFromHistory(h.id)
-                          });
-                        }}
-                        className="absolute top-1/2 -translate-y-1/2 right-3 w-7 h-7 bg-white border border-red-100 text-red-500 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:bg-red-50 shadow-sm active:scale-95 z-50 sm:opacity-0 sm:group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {h.id && (
+                        <button 
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            setConfirmModal({
+                              isOpen: true,
+                              title: "Xóa bản thảo này?",
+                              onConfirm: () => handleDeleteFromHistory(h.id)
+                            });
+                          }}
+                          className="absolute top-1/2 -translate-y-1/2 right-3 w-7 h-7 bg-white border border-red-100 text-red-500 rounded-lg flex items-center justify-center transition-all hover:scale-105 hover:bg-red-50 shadow-sm active:scale-95 z-50 sm:opacity-0 sm:group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -936,7 +954,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                     </div>
                     
                     <div className="max-h-[400px] overflow-y-auto no-scrollbar space-y-3 p-1 bg-stone-50/30 rounded-2xl">
-                      {chatHistory.map((msg, idx) => (
+                      {chatHistory?.filter(msg => msg && msg.parts && msg.parts[0]).map((msg, idx) => (
                         <div key={idx} className={cn(
                           "flex flex-col gap-1 max-w-[90%]",
                           msg.role === 'user' ? "ml-auto items-end" : "items-start"
@@ -946,7 +964,7 @@ export function RecipeGenerator({ preferences, updatePreference, setActiveTab, p
                             msg.role === 'user' ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-700"
                           )}>
                              <div className={cn("prose prose-stone prose-xs max-w-none", msg.role === 'user' && "prose-invert")}>
-                                <ReactMarkdown>{msg.parts[0].text}</ReactMarkdown>
+                                <ReactMarkdown>{msg.parts[0]?.text || ''}</ReactMarkdown>
                              </div>
                           </div>
                         </div>

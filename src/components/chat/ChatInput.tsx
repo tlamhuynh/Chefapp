@@ -144,7 +144,7 @@ export function ChatInput({
                  onChange={(e) => updatePreference('selectedModelId', e.target.value)}
                  className="outline-none appearance-none bg-transparent text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400 group-hover:text-neutral-900 transition-colors cursor-pointer"
              >
-                 {AVAILABLE_MODELS.map(m => (
+                 {AVAILABLE_MODELS.filter(m => m.tags?.includes('reasoning')).map(m => (
                      <option key={m.id} value={m.id}>
                          {m.name}
                      </option>

@@ -13,6 +13,7 @@ export function OrderAnalysis({ onClose, preferences }: OrderAnalysisProps) {
   const [image, setImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,6 +31,7 @@ export function OrderAnalysis({ onClose, preferences }: OrderAnalysisProps) {
     if (!image) return;
     setIsAnalyzing(true);
     try {
+      setError(null);
       const base64 = image.split(',')[1];
       const aiConfig = preferences ? { 
         openaiKey: preferences.openaiKey, 
@@ -40,19 +42,30 @@ export function OrderAnalysis({ onClose, preferences }: OrderAnalysisProps) {
         groqKey: preferences.groqKey
       } : undefined;
       const analysis = await analyzeOrderImage(base64, aiConfig, preferences?.selectedModelId);
-      setResult(analysis);
       
-      if (auth.currentUser) {
-        await addDoc(collection(db, 'orders'), {
-          imageUrl: image,
-          analysis: analysis.summary,
-          items: analysis.items.map((i: any) => `${i.quantity}x ${i.name}`),
-          authorId: auth.currentUser.uid,
-          createdAt: serverTimestamp()
-        });
+      if (analysis && analysis.items) {
+        setResult(analysis);
+        
+        if (auth.currentUser) {
+          await addDoc(collection(db, 'orders'), {
+            imageUrl: image,
+            analysis: analysis.summary,
+            items: analysis.items.map((i: any) => `${i.quantity}x ${i.name}`),
+            authorId: auth.currentUser.uid,
+            createdAt: serverTimestamp()
+          });
+        }
+      } else {
+        throw new Error("Kết quả phân tích không đúng định dạng.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Analysis failed", error);
+      const msg = error.message?.toLowerCase() || '';
+      if (msg.includes('quota') || msg.includes('limit')) {
+        setError("Hạn mức xử lý hình ảnh hiện đã hết. Vui lòng thử lại sau 1 phút.");
+      } else {
+        setError("Không thể phân tích hình ảnh hóa đơn. Vui lòng thử chụp lại rõ hơn.");
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -83,6 +96,22 @@ export function OrderAnalysis({ onClose, preferences }: OrderAnalysisProps) {
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-10 no-scrollbar">
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-3 text-red-600 text-xs font-bold">
+                <X className="w-4 h-4 cursor-pointer" onClick={() => setError(null)} />
+                {error}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {!image ? (
           <div className="space-y-8">
             <div 

@@ -12,12 +12,15 @@ const envSchema = z.object({
   
   // Database Provider Selection
   DB_PROVIDER: z.enum(['firebase', 'supabase']).default('firebase'),
-  SUPABASE_URL: z.string().optional(),
-  SUPABASE_SERVICE_KEY: z.string().optional(),
-  SUPABASE_ANON_KEY: z.string().optional(),
+  SUPABASE_URL: z.string().min(1, "URL cannot be empty if provided").optional().or(z.literal('')),
+  SUPABASE_SERVICE_KEY: z.string().min(1, "Service key cannot be empty if provided").optional().or(z.literal('')),
+  SUPABASE_ANON_KEY: z.string().min(1, "Anon key cannot be empty if provided").optional().or(z.literal('')),
+  SUPABASE_PUBLISHABLE_KEY: z.string().optional().or(z.literal('')),
 
   // AI Providers Keys
-  GEMINI_API_KEY: z.string().optional(), 
+  GEMINI_API_KEY: z.string().optional(),
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  GOOGLE_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
@@ -49,7 +52,7 @@ export const env = _env.success ? _env.data : envSchema.parse({ NODE_ENV: 'devel
  */
 export const isAIProviderReady = (provider: string): boolean => {
   const p = provider.toLowerCase();
-  if (p === 'google') return !!(env.GEMINI_API_KEY);
+  if (p === 'google') return !!(env.GEMINI_API_KEY || env.GOOGLE_GENERATIVE_AI_API_KEY || env.GOOGLE_API_KEY);
   if (p === 'openai') return !!(env.OPENAI_API_KEY);
   if (p === 'anthropic') return !!(env.ANTHROPIC_API_KEY);
   if (p === 'groq') return !!(env.GROQ_API_KEY);

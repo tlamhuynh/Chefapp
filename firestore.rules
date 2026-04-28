@@ -66,6 +66,10 @@ service cloud.firestore {
       allow update: if isOwner(userId) && isValidId(userId);
     }
     
+    match /test/{id} {
+      allow get: if true;
+    }
+
     match /health_check/{id} {
       allow get, list: if true;
     }
@@ -75,6 +79,27 @@ service cloud.firestore {
       allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isOwner(request.resource.data.userId) && isValidId(imageId);
       allow update: if isOwner(resource.data.userId) && isValidId(imageId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /saved_images/{imageId} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(imageId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(imageId);
+      allow update: if isOwner(resource.data.userId) && isValidId(imageId) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /creation_history/{id} {
+      allow read, delete: if isOwner(resource.data.userId) && isValidId(id);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.userId) && isValidId(id);
+      allow update: if isOwner(resource.data.userId) && isValidId(id) && request.resource.data.userId == resource.data.userId;
+    }
+
+    match /orders/{id} {
+      allow read, delete: if isOwner(resource.data.authorId) && isValidId(id);
+      allow list: if isSignedIn() && resource.data.authorId == request.auth.uid;
+      allow create: if isOwner(request.resource.data.authorId) && isValidId(id);
+      allow update: if isOwner(resource.data.authorId) && isValidId(id) && request.resource.data.authorId == resource.data.authorId;
     }
   }
 }

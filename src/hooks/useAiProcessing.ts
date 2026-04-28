@@ -54,7 +54,12 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
         googleKey: preferences.googleKey,
         openrouterKey: preferences.openrouterKey,
         nvidiaKey: preferences.nvidiaKey,
-        groqKey: preferences.groqKey
+        groqKey: preferences.groqKey,
+        // Chef Profile
+        chefExpertise: preferences.chefExpertise,
+        chefPhilosophy: preferences.chefPhilosophy,
+        chefPassions: preferences.chefPassions,
+        chefTone: preferences.chefTone
       };
 
       let inventory: any[] = [];
@@ -85,14 +90,11 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       
       // Since the user wants "everything", I'll implement a Custom MultiAgent with Streaming capacity
       
-      // Prepare fallback models (try Gemini as a reliable fallback if custom selection fails)
+      // Prepare fallback models (2026 Modern stack)
       const allFallbacks = [
-        'gemini-flash-latest', 
-        'gemini-2.0-flash', 
-        'gpt-4o-mini',
-        'groq/llama-3.3-70b-versatile',
-        'openrouter/google/gemini-2.0-flash-lite-preview-02-05:free',
-        'nvidia/meta/llama-3.3-70b-instruct'
+        'gemini-2.0-flash',
+        'gemini-flash-latest',
+        'groq/llama-3.3-70b-versatile'
       ].filter(id => id !== preferences.selectedModelId);
 
       const result = await multiAgentChatWithFallback(
@@ -112,14 +114,14 @@ export function useAiProcessing(activeConversationId: string | null, messages: C
       const aiMsgId = Math.random().toString(36).substring(7);
       await setDoc(doc(db, 'chats', aiMsgId), {
         text: result.text,
-        internalMonologue: result.internalMonologue,
+        internalMonologue: result.internalMonologue || null,
         sender: 'ai',
         userId: auth.currentUser.uid,
         conversationId: targetConvId,
         timestamp: serverTimestamp(),
-        recipe: result.recipe,
-        suggestions: result.suggestions,
-        proposedActions: result.proposedActions,
+        recipe: result.recipe || null,
+        suggestions: result.suggestions || null,
+        proposedActions: result.proposedActions || null,
         status: 'completed'
       });
 

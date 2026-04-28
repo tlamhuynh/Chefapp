@@ -69,13 +69,14 @@ Mỗi memory gồm:
 Chỉ trích xuất những thông tin THỰC SỰ mới hoặc thay đổi. Nếu không có gì mới, trả về mảng trống.`;
 
   try {
+    const lightModelId = 'groq/llama-3.1-8b-instant';
     const result = await chatWithAIWithFallback(
-      modelId,
+      lightModelId,
       [{ role: 'user', parts: [{ text: JSON.stringify(messages.slice(-10)) }] }],
       systemInstruction,
       undefined,
       config,
-      ['gemini-flash-latest', 'gpt-4o-mini', 'gemini-2.0-flash'],
+      ['gemini-2.0-flash-lite', 'gemini-2.0-flash'],
       z.object({
         memories: z.array(z.object({
           key: z.string(),
@@ -90,8 +91,8 @@ Chỉ trích xuất những thông tin THỰC SỰ mới hoặc thay đổi. N�
         await saveMemory(userId, mem.key, mem.value, mem.importance);
       }
     }
-  } catch (error) {
-    console.error("Error extracting memories:", error);
+  } catch (error: any) {
+    console.info(`[extractMemoriesFromChat] Background task gracefully skipped due to AI limits: ${error.message || String(error)}`);
   }
 }
 

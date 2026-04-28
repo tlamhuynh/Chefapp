@@ -16,9 +16,10 @@ const chatRateLimit = rateLimit({
 });
 
 router.get('/models', async (req, res) => {
-  const key = process.env.GEMINI_API_KEY;
-  // if (req.query.apiKey) return res.status(403).json({ error: "API keys must not be provided by the client" });
-  if (!key) return res.status(500).json({ error: "Server API Key not configured" });
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+  
+  const isInvalidKey = !key || key === 'undefined' || key === 'null' || key.length < 5;
+  if (isInvalidKey) return res.status(401).json({ error: "Server API Key not configured correctly (GEMINI_API_KEY is missing or invalid)" });
 
   const cacheKey = 'gemini-models';
   const cachedData = apiCache.get(cacheKey);
@@ -67,7 +68,11 @@ router.post('/', chatRateLimit, async (req, res) => {
 
     return res.json(result);
   } catch (error: any) {
-    logger.error("Chat API Error: %s", error.message);
+    if (error.statusCode === 429 || error.statusCode === 401) {
+       logger.warn("Chat API Error (User Constraint): %s", error.message);
+    } else {
+       logger.error("Chat API Error: %s", error.message);
+    }
     res.status(error.statusCode || 500).json({ error: error.message });
   }
 });

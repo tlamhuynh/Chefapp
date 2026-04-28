@@ -5,6 +5,41 @@ import { ImageIcon, Trash2, Download, ExternalLink, Search, Calendar, ChefHat } 
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
 
+const SAMPLE_IMAGES = [
+  {
+    id: 'sample-1',
+    url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
+    title: 'Healthy Breakfast Bowl',
+    source: 'Sample Data',
+    isSample: true,
+    createdAt: new Date()
+  },
+  {
+    id: 'sample-2',
+    url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80',
+    title: 'Gourmet Pizza',
+    source: 'Sample Data',
+    isSample: true,
+    createdAt: new Date()
+  },
+  {
+    id: 'sample-3',
+    url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&q=80',
+    title: 'Wagyu Beef Steaks',
+    source: 'Sample Data',
+    isSample: true,
+    createdAt: new Date()
+  },
+  {
+    id: 'sample-4',
+    url: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=800&q=80',
+    title: 'Seafood Platter',
+    source: 'Sample Data',
+    isSample: true,
+    createdAt: new Date()
+  }
+];
+
 export function Gallery() {
   const [images, setImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -12,7 +47,17 @@ export function Gallery() {
   const [selectedImage, setSelectedImage] = useState<any>(null);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    // Basic safety timeout for loading
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!auth.currentUser) {
+      return;
+    }
 
     const q = query(
       collection(db, 'saved_images'),
@@ -23,13 +68,20 @@ export function Gallery() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setImages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
+    }, (err) => {
+      console.error("Gallery snapshot error:", err);
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [auth.currentUser?.uid]);
+
+  const displayedImages = images.length > 0 ? images : SAMPLE_IMAGES;
+  const isSampleMode = images.length === 0 && !loading;
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (id.startsWith('sample')) return;
     if (!confirm('Bạn có chắc muốn xóa hình ảnh này khỏi bộ sưu tập?')) return;
     try {
       await deleteDoc(doc(db, 'saved_images', id));
@@ -39,7 +91,7 @@ export function Gallery() {
     }
   };
 
-  const filteredImages = images.filter(img => 
+  const filteredImages = displayedImages.filter(img => 
     img.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     img.source?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -54,7 +106,12 @@ export function Gallery() {
         <div className="flex items-center gap-3">
           <Logo />
           <div className="space-y-0.5">
-            <h2 className="text-xl font-display font-bold text-neutral-900 tracking-tight">Bộ sưu tập</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-display font-bold text-neutral-900 tracking-tight">Bộ sưu tập</h2>
+              {isSampleMode && (
+                <span className="px-2 py-0.5 bg-neutral-100 text-[8px] font-bold uppercase tracking-widest rounded-md text-neutral-500">Môi trường Thử nghiệm</span>
+              )}
+            </div>
             <p className="text-neutral-500 text-[10px] font-medium uppercase tracking-wider">Cảm hứng ẩm thực</p>
           </div>
         </div>
@@ -97,7 +154,12 @@ export function Gallery() {
                   referrerPolicy="no-referrer"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
-                  <p className="text-white text-xs font-bold truncate">{img.title}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-white text-xs font-bold truncate">{img.title}</p>
+                    {img.isSample && (
+                      <span className="px-1 py-0.5 bg-white/20 backdrop-blur-md rounded text-[6px] font-bold text-white uppercase">Dữ liệu mẫu</span>
+                    )}
+                  </div>
                   <p className="text-white/70 text-[10px] uppercase tracking-widest mt-1">
                     {img.createdAt ? (
                       typeof img.createdAt.toDate === 'function' 
@@ -136,7 +198,7 @@ export function Gallery() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setSelectedImage(null)}
-            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-10"
+            className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-10"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}

@@ -24,7 +24,7 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
   const [showShareTooltip, setShowShareTooltip] = useState(false);
 
   const handleShare = async () => {
-    const shareText = `# ${recipe.title}\n\n## Nguyên liệu\n${recipe.ingredients.map((ing: any) => `- ${ing.name}: ${ing.amount} ${ing.unit}`).join('\n')}\n\n## Hướng dẫn\n${recipe.instructions}`;
+    const shareText = `# ${recipe.title}\n\n## Nguyên liệu\n${(recipe.ingredients || []).map((ing: any) => `- ${ing?.name || '?'}: ${ing?.amount || '?'} ${ing?.unit || ''}`).join('\n')}\n\n## Hướng dẫn\n${recipe.instructions || 'Chưa có hướng dẫn'}`;
     
     if (navigator.share) {
       try {
@@ -405,19 +405,19 @@ export function RecipeDetail({ recipe, onClose, onSave, onFindSimilar, isNew }: 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-50">
-                      {recipe.ingredients.map((ing: any, i: number) => (
+                      {(recipe.ingredients || []).map((ing: any, i: number) => (
                         <tr key={i} className="hover:bg-stone-50/50 transition-colors group">
                           <td className="p-5">
-                            <p className="font-bold text-stone-900">{ing.name}</p>
+                            <p className="font-bold text-stone-900">{ing?.name || 'Chưa rõ'}</p>
                           </td>
                           <td className="p-5 text-right">
-                            <p className="text-stone-600 font-medium">{ing.amount} {ing.unit}</p>
+                            <p className="text-stone-600 font-medium">{ing?.amount || '?'} {ing?.unit || ''}</p>
                           </td>
                           <td className="p-5 text-right">
-                            <p className="text-stone-400 font-medium">{formatCurrency(ing.purchasePrice || 0)}</p>
+                            <p className="text-stone-400 font-medium">{formatCurrency(ing?.purchasePrice || 0)}</p>
                           </td>
                           <td className="p-5 text-right">
-                            <p className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">{formatCurrency(ing.costPerAmount || 0)}</p>
+                            <p className="font-bold text-stone-900 group-hover:text-orange-600 transition-colors">{formatCurrency(ing?.costPerAmount || 0)}</p>
                           </td>
                         </tr>
                       ))}

@@ -53,10 +53,69 @@ interface Recipe {
   notes?: string;
 }
 
-export function MenuManagement({ setActiveTab, preferences, updatePreference }: { setActiveTab: (tab: any) => void, preferences?: any, updatePreference: (key: string, value: string) => void }) {
+export function MenuManagement({ 
+  setActiveTab, 
+  preferences, 
+  updatePreference,
+  backgroundAnalysisResult,
+  onBackgroundResultProcessed
+}: { 
+  setActiveTab: (tab: any) => void, 
+  preferences?: any, 
+  updatePreference: (key: string, value: string) => void,
+  backgroundAnalysisResult?: { result: any, isInvoice: boolean } | null,
+  onBackgroundResultProcessed?: () => void
+}) {
   const [activeSubTab, setActiveSubTab] = useState<'menu' | 'inventory' | 'suppliers' | 'insights'>('menu');
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  
+  const SAMPLE_RECIPES: Recipe[] = [
+    {
+      id: 'sample-1',
+      title: "Phở Bò (Mẫu)",
+      ingredients: [{ name: "Xương bò", amount: 100, unit: "g" }],
+      totalCost: 15000,
+      sellingPrice: 45000,
+      status: 'active',
+      version: 1.0,
+      notes: 'Công thức mẫu hệ thống'
+    },
+    {
+      id: 'sample-2',
+      title: "Gà KFC (Mẫu)",
+      ingredients: [{ name: "Cánh gà", amount: 2, unit: "cái" }],
+      totalCost: 25000,
+      sellingPrice: 65000,
+      status: 'active',
+      version: 1.1
+    }
+  ];
+
+  const SAMPLE_INVENTORY: InventoryItem[] = [
+    {
+      id: 'sample-inv-1',
+      name: "Thịt Bò Thăn (Mẫu)",
+      currentStock: 2,
+      minStock: 5,
+      unit: "kg",
+      lastPurchasePrice: 220000,
+      category: "Thực phẩm"
+    },
+    {
+      id: 'sample-inv-2',
+      name: "Dầu ăn (Mẫu)",
+      currentStock: 15,
+      minStock: 2,
+      unit: "lít",
+      lastPurchasePrice: 35000,
+      category: "Gia vị"
+    }
+  ];
+
+  const displayedRecipes = (recipes?.length || 0) > 0 ? recipes : SAMPLE_RECIPES;
+  const displayedInventory = (inventory?.length || 0) > 0 ? inventory : SAMPLE_INVENTORY;
+
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [isScanningInvoice, setIsScanningInvoice] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
@@ -79,10 +138,48 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
   } | null>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
+  // Watch for background analysis results
+  useEffect(() => {
+    if (backgroundAnalysisResult) {
+      if (backgroundAnalysisResult.isInvoice) {
+        setInvoiceAnalysisResult(backgroundAnalysisResult.result);
+        setIsScanningInvoice(true);
+      } else {
+        setAnalysisResult(backgroundAnalysisResult.result);
+        setIsCapturing(true);
+      }
+      // Notify parent that we've taken the result
+      onBackgroundResultProcessed?.();
+    }
+  }, [backgroundAnalysisResult, onBackgroundResultProcessed]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Use background analysis agent if available
+    if ((window as any).startMenuAnalysis) {
+      const aiConfig = preferences ? { 
+        openaiKey: preferences.openaiKey, 
+        anthropicKey: preferences.anthropicKey, 
+        googleKey: preferences.googleKey,
+        openrouterKey: preferences.openrouterKey,
+        nvidiaKey: preferences.nvidiaKey,
+        groqKey: preferences.groqKey
+      } : undefined;
+      
+      (window as any).startMenuAnalysis(file, isScanningInvoice, aiConfig, preferences?.selectedModelId);
+      
+      // Close local picker modal - progression is handled by the agent overlay
+      if (isScanningInvoice) setIsScanningInvoice(false);
+      else setIsCapturing(false);
+      
+      setNotification({ message: 'Đã bắt đầu phân tích trong nền. Bạn có thể tiếp tục làm việc.', type: 'success' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    // Fallback to local analysis UI if agent is not available (shouldn't happen with current Layout setup)
     setIsAnalyzing(true);
     try {
       const reader = new FileReader();
@@ -118,7 +215,8 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     if (!auth.currentUser || !invoiceAnalysisResult) return;
     
     try {
-      for (const item of invoiceAnalysisResult?.items || []) {
+      const itemsToSave = Array.isArray(invoiceAnalysisResult?.items) ? invoiceAnalysisResult.items : [];
+      for (const item of itemsToSave) {
         const validatedItem = InventorySchema.parse({
            name: item.name,
            currentStock: Number(item.quantity) || 0,
@@ -172,7 +270,8 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     if (!auth.currentUser || !analysisResult) return;
     
     try {
-      for (const dish of analysisResult?.dishes || []) {
+      const dishesToSave = Array.isArray(analysisResult?.dishes) ? analysisResult.dishes : [];
+      for (const dish of dishesToSave) {
          // Although Menu dish logic maps slightly differently, we can create a draft Recipe format.
         await addDoc(collection(db, 'recipes'), {
           title: dish.title,
@@ -196,7 +295,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
     }
   };
 
-  const filteredRecipes = (recipes || []).filter(recipe => {
+  const filteredRecipes = (displayedRecipes || []).filter(recipe => {
     const query = searchQuery.toLowerCase();
     const matchesTitle = recipe.title?.toLowerCase()?.includes(query);
     const matchesIngredients = recipe.ingredients?.some(ing => 
@@ -265,7 +364,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
       unsubRecipes();
       unsubInventory();
     };
-  }, []);
+  }, [auth.currentUser?.uid]);
 
   const calculateMargin = (recipe: Recipe) => {
     if (!recipe.sellingPrice || !recipe.totalCost) return 0;
@@ -273,11 +372,11 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
   };
 
   const getLowStockItems = () => {
-    return inventory.filter(item => item.currentStock <= item.minStock);
+    return displayedInventory.filter(item => item.currentStock <= item.minStock);
   };
 
   const getLowMarginRecipes = () => {
-    return recipes.filter(r => r.status === 'active' && calculateMargin(r) < 30);
+    return displayedRecipes.filter(r => r.status === 'active' && calculateMargin(r) < 30);
   };
 
   return (
@@ -351,17 +450,17 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             </div>
             <div className="flex flex-col items-end gap-0.5">
               <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">Model</span>
-              <select
-                value={preferences?.selectedModelId}
-                onChange={(e) => updatePreference('selectedModelId', e.target.value)}
-                className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[9px] appearance-none hover:text-orange-700 transition-colors text-right"
-              >
-                {AVAILABLE_MODELS.map(m => (
-                  <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={preferences?.selectedModelId}
+                  onChange={(e) => updatePreference('selectedModelId', e.target.value)}
+                  className="bg-transparent border-none p-0 font-bold text-orange-600 uppercase tracking-widest cursor-pointer focus:ring-0 text-[10px] appearance-none hover:text-orange-700 transition-colors text-right"
+                >
+                  {AVAILABLE_MODELS.filter(m => m.supportsVision === true || m.tags?.includes('vision')).map(m => (
+                    <option key={m.id} value={m.id} className="text-stone-900 bg-white uppercase">
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
             </div>
           </div>
         </div>
@@ -421,7 +520,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             </div>
 
             <div className="grid grid-cols-1 gap-4">
-              {(recipes?.length || 0) === 0 ? (
+              {displayedRecipes.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-[2rem] border border-neutral-100 border-dashed px-6">
                   <div className="w-16 h-16 bg-neutral-50 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Logo size={32} variant="stone" className="opacity-40" />
@@ -453,9 +552,12 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
               ) : (
                 filteredRecipes.map((recipe) => (
                   <div 
-                    key={recipe.id}
-                    className="bg-white p-5 rounded-2xl border border-neutral-100 hover:border-neutral-200 transition-all group"
+                    key={recipe?.id || Math.random()}
+                    className="bg-white p-5 rounded-2xl border border-neutral-100 hover:border-neutral-200 transition-all group relative overflow-hidden"
                   >
+                  {recipe?.id?.toString()?.includes('sample') && (
+                    <div className="absolute top-0 right-0 py-0.5 px-2 bg-amber-50 text-amber-500 text-[8px] font-black uppercase tracking-widest rounded-bl-xl border-l border-b border-amber-100">Dữ liệu mẫu</div>
+                  )}
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
@@ -570,16 +672,19 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-50">
-                  {(inventory?.length || 0) === 0 ? (
+                  {displayedInventory.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="px-4 py-10 text-center text-neutral-400 text-sm italic">
                         Chưa có dữ liệu kho. Hãy thêm nguyên liệu mới.
                       </td>
                     </tr>
                   ) : (
-                    inventory?.map((item) => (
-                      <tr key={item.id} className="hover:bg-neutral-50/50 transition-colors">
-                        <td className="px-4 py-4">
+                    displayedInventory?.map((item) => (
+                      <tr key={item?.id || Math.random()} className="hover:bg-neutral-50/50 transition-colors">
+                        <td className="px-4 py-4 relative overflow-hidden">
+                          {item?.id?.toString()?.includes('sample') && (
+                            <div className="absolute top-0 right-0 py-0.5 px-1.5 bg-amber-50 text-amber-500 text-[6px] font-black uppercase tracking-widest rounded-bl-lg">Mẫu</div>
+                          )}
                           <p className="text-sm font-bold text-neutral-900">{item.name}</p>
                           <p className="text-[10px] text-neutral-400">{item.category}</p>
                         </td>
@@ -817,12 +922,14 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+            onClick={() => setSelectedRecipe(null)}
+            className="fixed inset-0 z-[60] bg-stone-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
           >
             <motion.div 
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
+              onClick={(e) => e.stopPropagation()}
               className="bg-white w-full max-w-lg rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden max-h-[85vh] flex flex-col mt-auto sm:mt-0"
             >
               <div className="p-6 border-b border-neutral-100 flex justify-between items-center bg-white shrink-0">
@@ -976,9 +1083,9 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                      </section>
 
                      <section className="space-y-4">
-                       <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách Nguyên Liệu ({invoiceAnalysisResult.items?.length || 0})</h3>
+                       <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách Nguyên Liệu ({Array.isArray(invoiceAnalysisResult.items) ? invoiceAnalysisResult.items.length : 0})</h3>
                        <div className="grid grid-cols-1 gap-3">
-                         {invoiceAnalysisResult.items?.map((item, i) => (
+                         {Array.isArray(invoiceAnalysisResult.items) && invoiceAnalysisResult.items.map((item, i) => (
                            <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl flex justify-between items-center shadow-sm">
                              <div>
                                <p className="font-bold text-neutral-900">{item.name}</p>
@@ -992,6 +1099,21 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                          ))}
                        </div>
                      </section>
+                     
+                     {/* Debug info */}
+                     {(invoiceAnalysisResult as any)._rawResponse && invoiceAnalysisResult.items?.length === 0 && (
+                       <section className="bg-neutral-900 p-6 rounded-2xl">
+                         <div className="flex items-center gap-3 mb-4 text-yellow-500">
+                           <AlertTriangle className="w-5 h-5" />
+                           <h3 className="font-bold">Nhật ký AI (Debug)</h3>
+                         </div>
+                         <p className="text-sm text-neutral-300 font-mono text-xs whitespace-pre-wrap overflow-auto max-h-[300px]">
+                           {typeof (invoiceAnalysisResult as any)._rawResponse === 'object'
+                            ? JSON.stringify((invoiceAnalysisResult as any)._rawResponse, null, 2)
+                            : (invoiceAnalysisResult as any)._rawResponse}
+                         </p>
+                       </section>
+                     )}
                    </div>
                 ) : analysisResult ? (
                   <div className="space-y-8">
@@ -1004,9 +1126,9 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                     </section>
 
                     <section className="space-y-4">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách món ăn nhận diện ({analysisResult?.dishes?.length || 0})</h3>
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-neutral-400">Danh sách món ăn nhận diện ({Array.isArray(analysisResult?.dishes) ? analysisResult.dishes.length : 0})</h3>
                       <div className="grid grid-cols-1 gap-3">
-                         {analysisResult?.dishes?.map((dish, i) => (
+                         {Array.isArray(analysisResult?.dishes) && analysisResult.dishes.map((dish, i) => (
                           <div key={i} className="p-4 bg-white border border-neutral-100 rounded-xl space-y-3 shadow-sm">
                             <div className="flex justify-between items-start">
                               <div>
@@ -1019,7 +1141,7 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                               </div>
                             </div>
                             
-                            {dish.potentialIngredients && dish.potentialIngredients.length > 0 && (
+                            {Array.isArray(dish.potentialIngredients) && dish.potentialIngredients.length > 0 && (
                               <div className="pt-2 border-t border-neutral-50">
                                 <p className="text-[8px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 focus:text-neutral-900">Nguyên liệu dự đoán:</p>
                                 <div className="flex flex-wrap gap-1">
@@ -1036,20 +1158,35 @@ export function MenuManagement({ setActiveTab, preferences, updatePreference }: 
                       </div>
                     </section>
 
-                    {analysisResult?.clarifyingQuestions && (analysisResult.clarifyingQuestions?.length || 0) > 0 && (
+                    {Array.isArray(analysisResult?.clarifyingQuestions) && analysisResult.clarifyingQuestions.length > 0 && (
                       <section className="bg-orange-50 p-6 rounded-2xl border border-orange-100">
                         <div className="flex items-center gap-3 mb-4">
                           <HelpCircle className="w-5 h-5 text-orange-600" />
                           <h3 className="font-bold text-orange-900">Câu hỏi từ Bếp Trưởng</h3>
                         </div>
                         <ul className="space-y-3">
-                          {analysisResult.clarifyingQuestions?.map((q, i) => (
+                          {analysisResult.clarifyingQuestions.map((q, i) => (
                             <li key={i} className="text-sm text-orange-800 flex gap-2">
                               <span className="font-bold">•</span> {q}
                             </li>
                           ))}
                         </ul>
                         <p className="mt-4 text-[10px] text-orange-600 font-medium italic">* Bạn có thể trả lời các câu hỏi này sau khi lưu vào Menu Manager.</p>
+                      </section>
+                    )}
+
+                    {/* Debug info */}
+                    {(analysisResult as any)?._rawResponse && analysisResult?.dishes?.length === 0 && (
+                      <section className="bg-neutral-900 p-6 rounded-2xl">
+                        <div className="flex items-center gap-3 mb-4 text-yellow-500">
+                          <AlertTriangle className="w-5 h-5" />
+                          <h3 className="font-bold">Nhật ký AI (Debug)</h3>
+                        </div>
+                        <p className="text-sm text-neutral-300 font-mono text-xs whitespace-pre-wrap overflow-auto max-h-[300px]">
+                          {typeof (analysisResult as any)._rawResponse === 'object' 
+                           ? JSON.stringify((analysisResult as any)._rawResponse, null, 2) 
+                           : (analysisResult as any)._rawResponse}
+                        </p>
                       </section>
                     )}
                   </div>

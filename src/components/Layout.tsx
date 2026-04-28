@@ -3,6 +3,7 @@ import { LayoutDashboard, BookOpen, MessageSquare, User, Sparkles, ClipboardList
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { LogoText } from './Logo';
+import { AnalysisAgent } from './AnalysisAgent';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,9 +11,10 @@ interface LayoutProps {
   setActiveTab: (tab: any) => void;
   preferences: any;
   updatePreference: (key: string, value: any) => void;
+  onAnalysisComplete?: (result: any, isInvoice: boolean) => void;
 }
 
-export function Layout({ children, activeTab, setActiveTab, preferences, updatePreference }: LayoutProps) {
+export function Layout({ children, activeTab, setActiveTab, preferences, updatePreference, onAnalysisComplete }: LayoutProps) {
   const isActiveProfile = activeTab === 'profile';
   const tabs = [
     // ...
@@ -51,12 +53,12 @@ export function Layout({ children, activeTab, setActiveTab, preferences, updateP
         <div className="w-full max-w-7xl mx-auto flex justify-between items-center">
           <LogoText />
           <div className="flex items-center gap-4">
-            <button
-               onClick={() => updatePreference('darkMode', !preferences.darkMode)}
-               className="w-10 h-10 rounded-full border border-neutral-200 dark:border-white/10 flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-white/5 transition-all"
-            >
-               {preferences.darkMode ? <Sun className="w-4 h-4 text-emerald-400" /> : <Moon className="w-4 h-4 text-neutral-400" />}
-            </button>
+             <button
+                onClick={() => preferences && updatePreference('darkMode', !preferences.darkMode)}
+                className="w-10 h-10 rounded-full border border-neutral-200 dark:border-white/10 flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-white/5 transition-all"
+             >
+                {preferences?.darkMode ? <Sun className="w-4 h-4 text-emerald-400" /> : <Moon className="w-4 h-4 text-neutral-400" />}
+             </button>
 
             <div className="flex items-center gap-2 px-3 py-1 bg-neutral-100 dark:bg-white/5 rounded-full">
               <div className="w-1.5 h-1.5 bg-neutral-900 dark:bg-emerald-400 rounded-full animate-pulse" />
@@ -127,6 +129,7 @@ export function Layout({ children, activeTab, setActiveTab, preferences, updateP
         </div>
       </nav>
       <div className="fixed inset-0 pointer-events-none border-[12px] border-white dark:border-neutral-950 z-30 transition-colors duration-300" />
+      <AnalysisAgent onComplete={onAnalysisComplete || (() => {})} />
     </div>
   );
 }

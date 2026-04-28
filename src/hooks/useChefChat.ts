@@ -42,6 +42,7 @@ export function useChefChat() {
     const q = query(
       collection(db, 'chats'),
       where('conversationId', '==', activeConversationId),
+      where('userId', '==', auth.currentUser.uid),
       orderBy('timestamp', 'asc')
     );
 

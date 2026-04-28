@@ -22,7 +22,11 @@ function processData(data: any) {
   return processed;
 }
 
-export const collection = (db: any, path: string) => ({ type: 'collection', path });
+const generateId = () => {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
+
+export const collection = (db: any, path: string) => ({ type: 'collection', path, id: path });
 
 export const doc = (db: any, path: string, id?: string) => {
   const parts = path.split('/');
@@ -34,13 +38,19 @@ export const doc = (db: any, path: string, id?: string) => {
      docId = parts[1];
   }
   if (!docId) {
-    docId = crypto.randomUUID();
+    docId = generateId();
   }
-  return { type: 'doc', path: `${collectionName}/${docId}`, collection: collectionName, id: docId };
+  return { 
+    type: 'doc', 
+    path: `${collectionName}/${docId}`, 
+    collection: collectionName, 
+    id: docId,
+    parent: { id: collectionName, path: collectionName } 
+  };
 };
 
 export const addDoc = async (collRef: any, data: any) => {
-  const id = crypto.randomUUID();
+  const id = generateId();
   const insertData = { ...processData(data), id };
   
   const { data: result, error } = await supabase.from(collRef.path).insert(insertData).select().single();
@@ -79,7 +89,11 @@ export const deleteDoc = async (docRef: any) => {
 
 export const getDoc = async (docRef: any) => {
   const { data, error } = await supabase.from(docRef.collection).select('*').eq('id', docRef.id).maybeSingle();
-  if (error || !data) return { id: docRef.id, exists: () => false, data: () => undefined };
+  if (error) {
+    console.error(`Supabase GetDoc Error in ${docRef.collection}:`, error);
+    throw error;
+  }
+  if (!data) return { id: docRef.id, exists: () => false, data: () => undefined };
   return { id: docRef.id, exists: () => true, data: () => data };
 };
 
@@ -124,7 +138,7 @@ export const getDocs = async (queryRef: any) => {
   
   if (error) {
     console.error(`Supabase Query Error in ${collectionName}:`, error);
-    return { docs: [], empty: true, size: 0, forEach: () => {} };
+    throw error;
   }
   
   const records: any[] = data || [];
@@ -146,29 +160,63 @@ export const getDocs = async (queryRef: any) => {
 
 export const onSnapshot = (queryRef: any, callback: Function, onError?: Function) => {
   let isCancelled = false;
+  let retryCount = 0;
+  const maxRetries = 5;
   const collectionName = queryRef.type === 'collection' ? queryRef.path : queryRef.collection;
   
   const fetchAndCallback = async () => {
     if (isCancelled) return;
     try {
       const snap = await getDocs(queryRef);
-      if (!isCancelled) callback(snap);
+      if (!isCancelled) {
+        callback(snap);
+        retryCount = 0; // Reset retry count on success
+      }
     } catch(e) {
-      if (!isCancelled && onError) onError(e);
+      console.warn(`onSnapshot fetch error for ${collectionName}:`, e);
+      if (!isCancelled) {
+        if (retryCount < maxRetries) {
+          retryCount++;
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff
+          setTimeout(fetchAndCallback, delay);
+        } else if (onError) {
+          onError(e);
+        }
+      }
     }
   };
 
   fetchAndCallback();
   
-  const channel = supabase.channel(`public:${collectionName}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: collectionName }, () => {
-      fetchAndCallback();
-    })
-    .subscribe();
+  const setupSubscription = () => {
+    if (isCancelled) return;
+    
+    const channel = supabase.channel(`public:${collectionName}-${Math.random().toString(36).slice(2, 7)}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: collectionName }, () => {
+        fetchAndCallback();
+      })
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`Supabase channel ${status} for ${collectionName}, retrying in 5s...`);
+          if (!isCancelled) {
+            setTimeout(() => {
+              supabase.removeChannel(channel);
+              setupSubscription();
+            }, 5000);
+          }
+        }
+      });
+
+    return channel;
+  };
+
+  const channel = setupSubscription();
 
   return () => {
     isCancelled = true;
-    supabase.removeChannel(channel);
+    if (channel) {
+      supabase.removeChannel(channel);
+    }
   };
 };
 

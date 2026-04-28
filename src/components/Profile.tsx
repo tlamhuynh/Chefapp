@@ -1,11 +1,12 @@
 import { signOut, auth, User, db, doc, updateDoc, deleteDoc, query, collection, where, getDocs } from '../lib/firebase';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, Database, Download, Cloud, Check, AlertCircle, Loader2, X, Palette, MessageSquare, Trash2, Sparkles, Key } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings, Shield, HelpCircle, ChevronRight, Database, Download, Cloud, Check, AlertCircle, Loader2, X, Palette, MessageSquare, Trash2, Sparkles, Key, ChefHat } from 'lucide-react';
 import { LocalDb } from '../lib/localDb';
 import { cn } from '../lib/utils';
 import { AVAILABLE_MODELS, chatWithAI } from '../lib/ai';
 import { useDriveBackup } from '../hooks/useDriveBackup';
+import { QuotaTracker } from '../lib/quota-tracker';
 
 interface ProfileProps {
   user: User;
@@ -18,7 +19,19 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [showBackupSuccess, setShowBackupSuccess] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'style' | 'model' | 'keys' | 'status' | 'system'>('style');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'style' | 'model' | 'keys' | 'status' | 'system' | 'quota' | 'chef'>('style');
+
+  useEffect(() => {
+    try {
+      const trigger = sessionStorage.getItem('trigger_open_settings');
+      if (trigger === 'true') {
+        setShowSettings(true);
+        setActiveSettingsTab('keys');
+        sessionStorage.removeItem('trigger_open_settings');
+      }
+    } catch (e) {}
+  }, []);
+
   const [apiStatus, setApiStatus] = useState<Record<string, { status: 'checking' | 'ok' | 'error', message?: string }>>({});
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
@@ -85,6 +98,34 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu OpenRouter API Key' } }));
         continue;
       }
+      if (model.provider === 'cerebras' && !preferences.cerebrasKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Cerebras API Key' } }));
+        continue;
+      }
+      if (model.provider === 'sambanova' && !preferences.sambanovaKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu SambaNova API Key' } }));
+        continue;
+      }
+      if (model.provider === 'cloudflare' && !preferences.cloudflareKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Cloudflare API Key' } }));
+        continue;
+      }
+      if (model.provider === 'mistral' && !preferences.mistralKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Mistral API Key' } }));
+        continue;
+      }
+      if (model.provider === 'cohere' && !preferences.cohereKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu Cohere API Key' } }));
+        continue;
+      }
+      if (model.provider === 'ai21' && !preferences.ai21Key) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu AI21 API Key' } }));
+        continue;
+      }
+      if (model.provider === 'deepseek' && !preferences.deepseekKey) {
+        setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: 'Thiếu DeepSeek API Key' } }));
+        continue;
+      }
 
       try {
         const key = model.provider === 'google' ? (preferences.googleKey || 'ENV') : 
@@ -92,7 +133,14 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                     model.provider === 'anthropic' ? preferences.anthropicKey :
                     model.provider === 'nvidia' ? preferences.nvidiaKey :
                     model.provider === 'groq' ? preferences.groqKey : 
-                    model.provider === 'openrouter' ? preferences.openrouterKey : '';
+                    model.provider === 'openrouter' ? preferences.openrouterKey :
+                    model.provider === 'cerebras' ? preferences.cerebrasKey :
+                    model.provider === 'sambanova' ? preferences.sambanovaKey :
+                    model.provider === 'cloudflare' ? preferences.cloudflareKey :
+                    model.provider === 'mistral' ? preferences.mistralKey :
+                    model.provider === 'cohere' ? preferences.cohereKey :
+                    model.provider === 'ai21' ? preferences.ai21Key :
+                    model.provider === 'deepseek' ? preferences.deepseekKey : '';
 
         // Test API by asking a simple question
         const result = await chatWithAI(
@@ -106,7 +154,14 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
              anthropicKey: preferences.anthropicKey,
              nvidiaKey: preferences.nvidiaKey,
              groqKey: preferences.groqKey,
-             openrouterKey: preferences.openrouterKey
+             openrouterKey: preferences.openrouterKey,
+             cerebrasKey: preferences.cerebrasKey,
+             sambanovaKey: preferences.sambanovaKey,
+             cloudflareKey: preferences.cloudflareKey,
+             mistralKey: preferences.mistralKey,
+             cohereKey: preferences.cohereKey,
+             ai21Key: preferences.ai21Key,
+             deepseekKey: preferences.deepseekKey
           }
         );
         
@@ -116,15 +171,20 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
           throw new Error("Không có phản hồi");
         }
       } catch (error: any) {
-        console.error(`API check failed for ${model.id}:`, error);
         const errorStr = String(error).toLowerCase();
         let msg = error.message || "Lỗi không xác định";
         
-        if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit')) {
+        // Don't flood console for known API errors
+        if (!errorStr.includes('quota') && !errorStr.includes('credits') && !errorStr.includes('api key')) {
+          console.error(`API check failed for ${model.id}:`, error);
+        }
+        
+        if (errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('limit') || errorStr.includes('credits') || errorStr.includes('afford')) {
+          // If we hit quota, it means the API key IS valid and connected, so we show 'ok'
           setApiStatus(prev => ({ ...prev, [model.id]: { status: 'ok' } }));
           continue;
-        } else if (errorStr.includes('api_key') || errorStr.includes('invalid_api_key')) {
-          msg = "API Key không hợp lệ. Vui lòng kiểm tra lại.";
+        } else if (errorStr.includes('api_key') || errorStr.includes('invalid') || errorStr.includes('không hợp lệ') || errorStr.includes('chưa được cấu hình')) {
+          msg = "API Key không hợp lệ hoặc chưa được cấu hình.";
         }
         
         setApiStatus(prev => ({ ...prev, [model.id]: { status: 'error', message: msg } }));
@@ -271,7 +331,7 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
               >
                 <div className="p-8 space-y-8">
                   <div className="flex p-1.5 bg-neutral-100 rounded-xl overflow-x-auto no-scrollbar">
-                    {['style', 'model', 'keys', 'status', 'system'].map((tab) => (
+                    {['style', 'chef', 'model', 'keys', 'status', 'system', 'quota'].map((tab) => (
                       <button 
                         key={tab}
                         onClick={() => setActiveSettingsTab(tab as any)}
@@ -280,10 +340,70 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                           activeSettingsTab === tab ? "bg-white text-neutral-900 shadow-md" : "text-neutral-400 hover:text-neutral-600"
                         )}
                       >
-                        {tab === 'style' ? 'Giao diện' : tab === 'model' ? 'Mô hình' : tab === 'keys' ? 'API Keys' : tab === 'status' ? 'Trạng thái' : 'Hệ thống'}
+                        {tab === 'style' ? 'Giao diện' : tab === 'chef' ? 'Profile Chef' : tab === 'model' ? 'Mô hình' : tab === 'keys' ? 'API Keys' : tab === 'status' ? 'Trạng thái' : tab === 'quota' ? 'Lưu Lượng Quota' : 'Hệ thống'}
                       </button>
                     ))}
                   </div>
+
+                  {activeSettingsTab === 'chef' && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
+                       <div className="bg-neutral-900 p-6 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-3 text-white">
+                          <ChefHat className="w-5 h-5 text-orange-400" />
+                          <h4 className="font-bold text-sm">Cá nhân hóa Trợ lý Chef</h4>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 leading-relaxed font-medium">
+                          Thông tin bên dưới giúp AI hiểu rõ phong cách, chuyên môn và nền tảng văn hóa của bạn để đưa ra những tư vấn chính xác nhất.
+                        </p>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Chuyên môn / Sở trường</label>
+                          <textarea
+                            value={preferences.chefExpertise || ''}
+                            onChange={(e) => updatePreference('chefExpertise', e.target.value)}
+                            placeholder="Ví dụ: Ẩm thực Pháp cổ điển, Modern Japanese Izakaya, Pastry, Molecular Gastronomy..."
+                            className="w-full px-6 py-4 bg-white border border-neutral-100 rounded-2xl text-xs font-medium focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm min-h-[80px] resize-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Triết lý & Văn hoá ẩm thực</label>
+                          <textarea
+                            value={preferences.chefPhilosophy || ''}
+                            onChange={(e) => updatePreference('chefPhilosophy', e.target.value)}
+                            placeholder="Ví dụ: Ưu tiên nguyên liệu bản địa, triết lý Farm-to-Table, Fusion Đông - Tây, Zen in cooking..."
+                            className="w-full px-6 py-4 bg-white border border-neutral-100 rounded-2xl text-xs font-medium focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm min-h-[80px] resize-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Ý tưởng & Đam mê hiện tại</label>
+                          <textarea
+                            value={preferences.chefPassions || ''}
+                            onChange={(e) => updatePreference('chefPassions', e.target.value)}
+                            placeholder="Ví dụ: Đang nghiên cứu về các loại sốt lên men tự nhiên, phát triển menu Tasting cho mùa hè..."
+                            className="w-full px-6 py-4 bg-white border border-neutral-100 rounded-2xl text-xs font-medium focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm min-h-[80px] resize-none"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 ml-1">Văn phong phản hồi</label>
+                          <select
+                            value={preferences.chefTone || 'professional'}
+                            onChange={(e) => updatePreference('chefTone', e.target.value)}
+                            className="w-full px-6 py-4 bg-white border border-neutral-100 rounded-2xl text-xs font-bold focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all shadow-sm appearance-none cursor-pointer"
+                          >
+                            <option value="professional">Chuyên nghiệp / Nghiêm túc</option>
+                            <option value="creative">Sáng tạo / Phóng khoáng</option>
+                            <option value="minimalist">Ngắn gọn / Thực dụng</option>
+                            <option value="supportive">Như một Mentor / Cổ vũ</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {activeSettingsTab === 'style' && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-top-2">
@@ -377,11 +497,17 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                       <div className="space-y-6">
                         {[
                           { key: 'googleKey', label: 'Google Gemini API Key', placeholder: 'AIza...', icon: 'google' },
-                          { key: 'openaiKey', label: 'OpenAI API Key', placeholder: 'sk-...', icon: 'openai' },
                           { key: 'anthropicKey', label: 'Anthropic API Key', placeholder: 'sk-ant-...', icon: 'anthropic' },
                           { key: 'openrouterKey', label: 'OpenRouter API Key', placeholder: 'sk-or-v1-...', icon: 'openrouter' },
                           { key: 'nvidiaKey', label: 'NVIDIA API Key', placeholder: 'nvapi-...', icon: 'nvidia' },
-                          { key: 'groqKey', label: 'Groq API Key', placeholder: 'gsk_...', icon: 'groq' }
+                          { key: 'groqKey', label: 'Groq API Key', placeholder: 'gsk_...', icon: 'groq' },
+                          { key: 'cerebrasKey', label: 'Cerebras API Key', placeholder: '...', icon: 'cerebras' },
+                          { key: 'sambanovaKey', label: 'SambaNova API Key', placeholder: '...', icon: 'sambanova' },
+                          { key: 'cloudflareKey', label: 'Cloudflare API Key', placeholder: '...', icon: 'cloudflare' },
+                          { key: 'mistralKey', label: 'Mistral API Key', placeholder: '...', icon: 'mistral' },
+                          { key: 'cohereKey', label: 'Cohere API Key', placeholder: '...', icon: 'cohere' },
+                          { key: 'ai21Key', label: 'AI21 API Key', placeholder: '...', icon: 'ai21' },
+                          { key: 'deepseekKey', label: 'DeepSeek API Key', placeholder: '...', icon: 'deepseek' }
                         ].map(field => (
                           <div key={field.key} className="space-y-2.5">
                             <div className="flex items-center justify-between px-1">
@@ -471,6 +597,46 @@ export function Profile({ user, preferences, updatePreference }: ProfileProps) {
                       </div>
                     </div>
                   )}
+
+                  {activeSettingsTab === 'quota' && (() => {
+                    const quotaStats = QuotaTracker.getInstance().getStats();
+                    
+                    return (
+                      <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                        <div className="bg-orange-50 p-6 rounded-2xl border border-orange-100 space-y-3">
+                          <div className="flex items-center gap-3 text-orange-800">
+                            <Sparkles className="w-5 h-5" />
+                            <h4 className="font-bold text-sm">Lưu lượng AI Quota</h4>
+                          </div>
+                          <p className="text-[11px] text-orange-700 leading-relaxed font-medium">
+                            Hệ thống tự động theo dõi hạn mức sử dụng (Requests/Tokens) của các API theo thiết bị để tránh lỗi vượt quá giới hạn (Rate Limit 429).
+                          </p>
+                        </div>
+                        
+                        {Object.keys(quotaStats).length === 0 ? (
+                            <div className="p-5 text-center text-xs text-neutral-500 bg-neutral-50 rounded-xl">Chưa có dữ liệu. Hãy chat với AI để bắt đầu theo dõi.</div>
+                        ) : (
+                          <div className="space-y-6">
+                            {Object.entries(quotaStats).map(([provider, models]: [string, any]) => (
+                                <div key={provider} className="space-y-3">
+                                  <h5 className="font-bold text-xs uppercase tracking-widest text-neutral-400 px-1">{provider}</h5>
+                                  {Object.entries(models).map(([model, metrics]: [string, any]) => (
+                                      <div key={model} className="p-4 bg-white border border-neutral-100 rounded-xl shadow-sm space-y-3">
+                                        <div className="font-bold text-sm text-neutral-800">{model}</div>
+                                        <div className="flex flex-wrap gap-2">
+                                           <div className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold uppercase tracking-wider">RPM (phút): {metrics.rpm || 0}</div>
+                                           <div className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-[10px] font-bold uppercase tracking-wider">RPD (ngày): {metrics.rpd || 0}</div>
+                                           <div className="px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold uppercase tracking-wider">TPM (tokens): {metrics.tpm || 0}</div>
+                                        </div>
+                                      </div>
+                                  ))}
+                                </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {activeSettingsTab === 'system' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-top-2">

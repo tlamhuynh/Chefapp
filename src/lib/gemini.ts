@@ -2,18 +2,19 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { chatWithAI, chatWithAIWithFallback } from './ai';
 
-export const chefModel = "gemini-2.0-flash";
-
+export const chefModel = "gemini-1.5-flash"; // Default model with vision support and high stability
 const defaultFallbacks = [
-  'gemini-flash-latest',
   'gemini-2.0-flash',
-  'gpt-4o-mini'
+  'gemini-1.5-pro',
+  'groq/deepseek-r1-distill-llama-70b',
+  'openrouter/deepseek/deepseek-r1:free',
+  'openrouter/google/gemma-2-9b-it:free',
 ];
 
 export const searchMarketPriceTool = {
   description: "Tìm kiếm giá thị trường hiện tại của các nguyên liệu tại Việt Nam để tính toán Food Cost chính xác.",
   parameters: z.object({
-    ingredients: z.array(z.string()).describe("Danh sách tên các nguyên liệu cần tìm giá (ví dụ: ['Thịt bò thăn', 'Hành tây'])")
+    ingredients: z.array(z.string().describe("Tên nguyên liệu (Ví dụ: 'Thịt bò thăn')")).describe("Danh sách tên các nguyên liệu cần tìm giá")
   })
 };
 
@@ -177,7 +178,7 @@ export async function refineRecipe(currentRecipe: any, feedback: string, history
   );
 }
 
-export async function analyzeOrderImage(base64Image: string, config?: any, modelId: string = chefModel) {
+export async function analyzeOrderImage(base64Image: string, config?: any, modelId: string = "gemini-2.0-flash-lite") {
   return await chatWithAIWithFallback(
     modelId,
     [
@@ -197,7 +198,7 @@ export async function analyzeOrderImage(base64Image: string, config?: any, model
   );
 }
 
-export async function analyzeMenuImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = chefModel) {
+export async function analyzeMenuImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = "gemini-2.0-flash-lite") {
   return await chatWithAIWithFallback(
     modelId,
     [
@@ -205,13 +206,15 @@ export async function analyzeMenuImage(base64Image: string, mimeType: string = "
         role: 'user', 
         parts: [
           { inlineData: { data: base64Image, mimeType } },
-          { text: `Hãy phân tích hình ảnh thực đơn (menu) này. 
-          YÊU CẦU:
+          { text: `Bạn là Hệ thống nhận dạng và phân tích (OCR & AI) chuyên nghiệp cho Menu nhà hàng.
+          YÊU CẦU TỐI THƯỢNG: Chỉ trả về JSON hợp lệ, KHÔNG THÊM BẤT KỲ VĂN BẢN NÀO KHÁC.
+          
+          Nhiệm vụ: Phân tích hình ảnh thực đơn (menu) này và trích xuất.
           1. Trích xuất danh sách các món ăn (dishes) gồm: title (tên món), price (giá số), description (mô tả), potentialIngredients (mảng các nguyên liệu dự đoán).
-          2. Tạo danh sách các câu hỏi làm rõ (clarifyingQuestions) nếu thiếu thông tin về định lượng hoặc nguyên liệu chính.
+          2. Tạo danh sách các câu hỏi làm rõ (clarifyingQuestions) nếu thiếu thông tin về định lượng.
           3. Cung cấp tóm tắt (summary) về phong cách thực đơn.
           
-          TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON với cấu trúc:
+          CẤU TRÚC JSON YÊU CẦU DANG CHUẨN:
           {
             "dishes": [{"title": "...", "price": 0, "description": "...", "potentialIngredients": ["..."]}],
             "clarifyingQuestions": ["..."],
@@ -220,7 +223,7 @@ export async function analyzeMenuImage(base64Image: string, mimeType: string = "
         ] 
       }
     ],
-    systemInstruction,
+    undefined,
     undefined,
     config,
     defaultFallbacks.filter(id => id !== modelId),
@@ -228,7 +231,7 @@ export async function analyzeMenuImage(base64Image: string, mimeType: string = "
   );
 }
 
-export async function analyzeInvoiceImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = chefModel) {
+export async function analyzeInvoiceImage(base64Image: string, mimeType: string = "image/jpeg", config?: any, modelId: string = "gemini-2.0-flash-lite") {
   return await chatWithAIWithFallback(
     modelId,
     [
@@ -236,14 +239,16 @@ export async function analyzeInvoiceImage(base64Image: string, mimeType: string 
         role: 'user', 
         parts: [
           { inlineData: { data: base64Image, mimeType } },
-          { text: `Hãy phân tích hình ảnh hóa đơn (invoice/receipt) mua hàng này. 
-          YÊU CẦU:
-          1. Trích xuất danh sách nguyên liệu/hàng hóa (items) gồm: name (tên), quantity (số lượng), unit (đơn vị), unitPrice (đơn giá), totalPrice (thành tiền).
-          2. Tính tổng tiền hóa đơn (totalAmount).
+          { text: `Bạn là Hệ thống nhận dạng và phân tích (OCR & AI) chuyên nghiệp cho Hóa đơn.
+          YÊU CẦU TỐI THƯỢNG: Chỉ trả về JSON hợp lệ, KHÔNG THÊM BẤT KỲ VĂN BẢN NÀO KHÁC.
+          
+          Nhiệm vụ: Phân tích hình ảnh hóa đơn (invoice/receipt) mua hàng này và trích xuất.
+          1. Trích xuất danh sách nguyên liệu/hàng hóa (items) gồm: name (tên), quantity (số lượng kiểu int/float), unit (đơn vị), unitPrice (đơn giá số), totalPrice (thành tiền số).
+          2. Tính tổng tiền hóa đơn (totalAmount định dạng số).
           3. Trích xuất tên nhà cung cấp (supplierName) và ngày mua (date) nếu có.
           4. Cung cấp tóm tắt (summary) ngắn gọn.
           
-          TRẢ VỀ KẾT QUẢ DƯỚI DẠNG JSON với cấu trúc:
+          CẤU TRÚC JSON YÊU CẦU DANG CHUẨN:
           {
             "items": [{"name": "...", "quantity": 0, "unit": "...", "unitPrice": 0, "totalPrice": 0}],
             "totalAmount": 0,
@@ -254,7 +259,7 @@ export async function analyzeInvoiceImage(base64Image: string, mimeType: string 
         ] 
       }
     ],
-    systemInstruction,
+    undefined,
     undefined,
     config,
     defaultFallbacks.filter(id => id !== modelId),
@@ -305,12 +310,13 @@ Nhiệm vụ của bạn là hỗ trợ người dùng trong các mảng sau:
 `;
 
 export async function chatWithCreativeAgent(messages: ChatMessage[], config?: any, modelId: string = chefModel) {
-  return await chatWithAI(
+  return await chatWithAIWithFallback(
     modelId,
     messages,
     creativeAgentInstruction,
     undefined,
     config,
+    defaultFallbacks.filter(id => id !== modelId),
     { 
       text: "Markdown response", 
       suggestions: "Action suggestions",

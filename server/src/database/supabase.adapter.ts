@@ -38,7 +38,8 @@ export class SupabaseDBAdapter implements IDatabaseService {
 
   private getClient(): SupabaseClient {
     if (!this.isConfigured || !this.client) {
-      throw new Error('Supabase is not configured. Please provide SUPABASE_URL and SUPABASE_ANON_KEY in your environment variables.');
+      logger.error('❌ Supabase is not configured properly.');
+      throw new Error('Supabase is not configured. Please ensure SUPABASE_URL and SUPABASE_ANON_KEY/SERVICE_KEY are set in your environment variables.');
     }
     return this.client;
   }
